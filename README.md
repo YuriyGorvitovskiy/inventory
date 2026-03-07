@@ -2,22 +2,119 @@
 
 Household inventory manager and Cloud PLM prototype platform.
 
+## What Is Implemented Now
+- Rust workspace scaffold.
+- First microservice: `inventory-core` (Axum HTTP API).
+- Basic web UI at `GET /` with inline table editing and `+ Add row`.
+- PostgreSQL persistence for inventory items.
+- Health endpoints:
+  - `GET /health`
+  - `GET /ready`
+- Item CRUD API:
+  - `GET /api/items`
+  - `POST /api/items`
+  - `PUT /api/items/{id}`
+  - `DELETE /api/items/{id}`
+- Dockerfile for `inventory-core`.
+- One-line Docker pipeline script (`scripts/docker-pipeline.sh`).
+- Kubernetes manifests (`kustomize`) for local cluster deployment.
+
+## Project Layout
+- `services/inventory-core` - first Rust service
+- `deploy/k8s/base` - Kubernetes manifests
+- `db/schema.sql` - initial DB schema draft
+- `docs/` - architecture and planning docs
+
+## Prerequisites
+- Rust toolchain (`rustup`, `cargo`)
+- Docker
+- Kubernetes (`k3s` + `kubectl`)
+- Optional: `kustomize` (or `kubectl apply -k`)
+
+## 1. One-Line Docker Deploy (Recommended)
+```bash
+cd /Users/yuriy/Development/inventory
+./scripts/docker-pipeline.sh
+```
+
+Or via make:
+```bash
+make docker-deploy
+```
+
+This will:
+- build image `inventory-core:dev`
+- ensure Postgres container `inventory-postgres` is running
+- replace existing `inventory-core` container
+- start container on `localhost:8080`
+- wait until `/health` is ready
+
+Open UI:
+```bash
+open http://localhost:8080/
+```
+
+Stop container:
+```bash
+make docker-stop
+```
+
+Stop app and database containers:
+```bash
+make docker-stop-all
+```
+
+## 2. Build and Run Locally (Rust)
+```bash
+cd /Users/yuriy/Development/inventory
+cargo run -p inventory-core
+```
+
+Test endpoints:
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/ready
+```
+
+Open UI:
+```bash
+open http://localhost:8080/
+```
+
+## 3. Build Container Manually
+```bash
+cd /Users/yuriy/Development/inventory
+docker build -t inventory-core:dev -f services/inventory-core/Dockerfile .
+```
+
+## 4. Deploy to Kubernetes (Optional)
+```bash
+cd /Users/yuriy/Development/inventory
+kubectl apply -k deploy/k8s/base
+kubectl -n inventory get pods
+kubectl -n inventory get svc
+```
+
+Port-forward and test:
+```bash
+kubectl -n inventory port-forward svc/inventory-core 8080:80
+curl http://localhost:8080/health
+```
+
+## Helper Commands
+```bash
+make run
+make build
+make docker-build
+make docker-deploy
+make docker-stop
+make docker-stop-all
+make k8s-apply
+make k8s-delete
+```
+
 ## Planning Documents
-- Top-level specification: `docs/spec/top-level-spec.md`
-- Dynamic entity model: `docs/spec/dynamic-entity-model.md`
-- Implementation plan: `docs/plan/implementation-plan.md`
-- Work breakdown: `docs/plan/work-breakdown.md`
-
-## Current Direction
-- Rust microservices on Kubernetes.
-- PostgreSQL as system of record.
-- Kafka for async service communication.
-- Runtime-extensible universal entity model.
-- Runtime-updatable custom logic with versioning and rollback.
-- OpenTelemetry-based observability (metrics, traces, logs).
-- Tiered autoscaling with selective scale-to-zero and fast scale-up.
-- Two migration streams: model/data migration and platform migration.
-- Access control model implemented in later hardening phase.
-
-## Next Step
-Review and approve these docs, then we convert Phase 0 + First Sprint into concrete tickets with acceptance criteria and estimates.
+- `docs/spec/top-level-spec.md`
+- `docs/spec/dynamic-entity-model.md`
+- `docs/plan/implementation-plan.md`
+- `docs/plan/work-breakdown.md`
