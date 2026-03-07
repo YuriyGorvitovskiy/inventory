@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-core
+  namespace: inventory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-core
+  template:
+    metadata:
+      labels:
+        app: inventory-core
+    spec:
+      containers:
+        - name: inventory-core
+          image: inventory-core:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: PORT
+              value: "8080"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-core
+  namespace: inventory
+spec:
+  selector:
+    app: inventory-core
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

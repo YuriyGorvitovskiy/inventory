@@ -1,0 +1,16 @@
+# Rust
+/target
+**/target
+Cargo.lock
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Env
+.env
+.env.*
+
+# Local kube artifacts
+*.kubeconfig
