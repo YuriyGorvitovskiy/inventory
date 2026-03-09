@@ -1,60 +1,52 @@
 # Dynamic Entity Model Specification
 
 ## 1. Goal
-Provide a runtime-extensible domain model where every entity is stored in one table row and relationships are entities too.
-Support tenant-specific model and logic customization through a separate Customization Service.
+Provide a runtime-extensible model while preserving clear ownership and strong tenant isolation in relational storage.
+Entity metadata is interpreted from model files at service startup/runtime.
 
-## 2. Core Tables (Conceptual)
-- `entities`
-- `entity_types`
-- `entity_fields`
-- `entity_logic_bindings`
-- `entity_events`
-- `tenant_type_overlays`
-- `tenant_logic_overlays`
-- `entity_associations`
+Model file format reference:
+- `docs/spec/entity-definition-format.md`
+- one file per entity type under `models/<service>/*.entity.toml`
 
-## 3. Universal Entity Shape
-```json
-{
-  "id": "uuid",
-  "tenant_id": "uuid",
-  "type": "item",
-  "schema_version": 3,
-  "data": {},
-  "status": "active",
-  "created_at": "timestamp",
-  "updated_at": "timestamp"
-}
-```
+## 2. Persistence Topology
+- Tenant isolation: one database per tenant.
+- Service ownership: one schema per service inside the tenant database.
+- Entity typing: one table per entity type inside a service schema.
+- Entity row identity: `BIGINT` primary key per table.
 
-Notes:
-- `data` is JSONB and validated against current runtime type definition.
-- Strong indexes are still required for high-use fields via generated/functional indexes.
-- `tenant_id` is mandatory in all customization and lookup paths.
+Example:
+- Database: `tenant_acme`
+- Schema: `inventory_core`
+- Table: `items`
+- Row id: `42`
 
-## 4. Relationship-As-Entity Pattern
-Many-to-many links are represented as first-class entities.
+## 3. Identity Model
+Canonical global identity segments:
+- tenant
+- owner service
+- entity type
+- table-local id (`int64`)
 
-Example relation entity (`item_in_location`):
-```json
-{
-  "type": "item_in_location",
-  "data": {
-    "from_entity_id": "item-uuid",
-    "to_entity_id": "location-uuid",
-    "quantity": 2,
-    "unit": "pack"
-  }
-}
-```
+Canonical string form:
+- `tenant.owner_service.entity_type.id`
+- Example: `tenant-acme.inventory-core.item.42`
 
-Benefits:
-- Uniform querying model.
-- Auditable lifecycle for relationships.
-- Extra attributes on relations without join-table redesign.
+## 4. API and Routing Model
+- API gateway route encodes service boundary (example: `/inventory/items/{id}`).
+- Tenant is resolved from authenticated session/token claims.
+- Services do not trust tenant input from request payload/query for authorization scope.
+- Standard product APIs use numeric `id` values.
 
-## 5. Runtime Model Representation
+## 5. Where Composite IDs Are Used
+Composite global IDs are primarily for:
+- logs
+- traces
+- events
+- cross-service audit records
+
+They are not required as primary user-facing identifiers in normal CRUD APIs.
+
+## 6. Runtime Model Representation
 Meta-Model Service exposes:
 - Type definitions
 - Field definitions
@@ -77,70 +69,34 @@ Example representation:
 }
 ```
 
-## 6. Dynamic Custom Logic
-Runtime logic modules can be attached to entity lifecycle events.
-
-Hooks:
-- `before_create`
-- `after_create`
-- `before_update`
-- `after_update`
-- `on_event`
-
-Execution model:
-- Logic module version pinned per entity type/version.
-- Activation and rollback by metadata change.
-- Deterministic execution and strict timeout.
-- Tenant override logic is resolved by precedence:
-  1. OOTB hard invariants
-  2. Tenant override hooks
-  3. OOTB default hooks
-
 ## 7. Customization Service Boundary
 - OOTB services own core entity definitions and lifecycle invariants.
 - Customization Service owns tenant overlays, custom associations, and tenant logic bindings.
 - External/custom modules can define new entity types and associate them to OOTB entities.
 - Cross-boundary writes should use published APIs and events, not DB-level coupling.
 
-Example association entity:
-```json
-{
-  "type": "custom_association",
-  "tenant_id": "tenant-uuid",
-  "data": {
-    "source_entity_id": "custom-entity-uuid",
-    "target_entity_id": "ootb-entity-uuid",
-    "association_type": "supplier_offer_for_item",
-    "attributes": {"price": 4.99, "currency": "USD"}
-  }
-}
-```
-
 ## 8. Query and Reporting Strategy
-Universal table simplifies consistency but can hurt analytics if unmanaged.
-
-Recommended pattern:
-- Keep transactional writes in `entities`.
-- Build service-specific read projections/materialized views.
-- Index common keys extracted from JSONB.
-- Push analytical workloads to derived tables where needed.
+- Keep transactional writes in service-owned relational tables.
+- Build service-specific read projections/materialized views where needed.
+- Add targeted indexes per query shape.
+- Push analytical workloads to derived/reporting tables.
 
 ## 9. Migration Strategy
 - Type evolution uses versioned definitions.
 - Existing entities remain readable under previous versions.
-- Optional background migration upgrades old `data` payloads.
+- Optional background migration upgrades payload shape/data meaning.
 - Tenant overlays are versioned independently from OOTB type versions.
 
 ## 10. Risks and Guardrails
 Risks:
-- Type/validation drift.
-- JSONB query complexity.
+- Type/validation drift across services.
+- Cross-service ownership leakage.
+- Tenant isolation mistakes in routing/auth.
 - Runtime logic instability.
-- Tenant customization leakage across tenants.
 
 Guardrails:
-- Strict schema registry and compatibility checks.
+- Strict ownership contracts by service schema boundary.
+- Tenant context enforcement from auth/session claims.
 - CI validation for logic packages.
 - Contract tests for type versions.
 - Controlled rollout and rollback procedures.
-- Tenant-scoped query filters and policy enforcement in every service.

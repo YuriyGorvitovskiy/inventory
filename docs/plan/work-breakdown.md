@@ -18,12 +18,12 @@
 ### Work items
 - E2-W1: Design `entity_types` and `entity_fields` schema.
 - E2-W2: Implement Meta-Model service APIs.
-- E2-W3: Implement universal `entities` table + validation layer.
+- E2-W3: Define tenant DB + service schema + entity table conventions and validation layer.
 - E2-W4: Define relationship-as-entity conventions.
-- E2-W5: Add JSONB index strategy and benchmark scripts.
+- E2-W5: Add relational index strategy and benchmark scripts.
 
 ### Deliverables
-- Runtime model management and validated universal entities.
+- Runtime model management and validated service-owned typed entities.
 
 ## Epic 3: Identity, Settings, and Secrets
 ### Work items
@@ -35,16 +35,16 @@
 ### Deliverables
 - Authenticated API calls and secret lifecycle.
 
-## Epic 4: Inventory Core on Universal Model
+## Epic 4: Inventory Core on Typed Relational Model
 ### Work items
 - E4-W1: Define inventory entity types (item/category/location/item_in_location).
-- E4-W2: CRUD endpoints using universal model.
+- E4-W2: CRUD endpoints using service-owned typed tables.
 - E4-W3: Stock event processing with idempotency key.
 - E4-W4: Publish inventory Kafka events.
 - E4-W5: Build initial UI screens with dynamic forms.
 
 ### Deliverables
-- Usable inventory management flow using dynamic entities.
+- Usable inventory management flow using typed relational entities.
 
 ## Epic 5: Tenant Customization Service
 ### Work items
@@ -154,7 +154,7 @@ sequenceDiagram
     CUST->>K: customization.overlay.changed
 
     UI->>GW: Create item entity
-    GW->>INV: POST /entities
+    GW->>INV: POST /inventory/items
     INV->>CUST: resolve tenant overlay for validation
     INV->>LOGIC: execute tenant hooks
     INV->>K: inventory.entity.created

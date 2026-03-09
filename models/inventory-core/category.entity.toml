@@ -1,0 +1,12 @@
+#:schema ../../schemas/entity-definition.schema.json
+# Item category model
+format_version = 1
+
+[entity]
+name = "category"
+table = "categories"
+description = "Category dictionary for inventory grouping."
+fields = [
+  { name = "name", type = "string", default = "" },
+  { name = "description", type = "text", default = "" },
+]
