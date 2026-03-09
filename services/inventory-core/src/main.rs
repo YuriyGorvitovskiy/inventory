@@ -1,81 +1,63 @@
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::Html,
-    routing::{get, put},
-    Json, Router,
+mod config;
+mod db;
+mod model;
+mod handlers;
+mod models;
+mod state;
+mod ui;
+
+use axum::{routing::{get, put}, Router};
+use config::{init_tracing, load_config};
+use handlers::{
+    create_item, delete_item, get_model, health, index, list_items, ready, shutdown_signal,
+    update_item,
 };
-use serde::{Deserialize, Serialize};
-use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::{env, net::SocketAddr};
+use model::ModelRegistry;
+use sqlx::postgres::PgPoolOptions;
+use state::AppState;
+use std::sync::Arc;
 use tracing::info;
-
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    service: &'static str,
-}
-
-#[derive(Serialize)]
-struct ReadinessResponse {
-    status: &'static str,
-    checks: [&'static str; 1],
-}
-
-#[derive(Clone)]
-struct AppState {
-    db: PgPool,
-}
-
-#[derive(Clone, Serialize, Deserialize, sqlx::FromRow)]
-struct Item {
-    id: i64,
-    name: String,
-    category: String,
-    quantity: i64,
-}
-
-#[derive(Deserialize)]
-struct CreateItemRequest {
-    name: String,
-    category: String,
-    quantity: i64,
-}
-
-#[derive(Deserialize)]
-struct UpdateItemRequest {
-    name: String,
-    category: String,
-    quantity: i64,
-}
 
 #[tokio::main]
 async fn main() {
     init_tracing();
 
-    let addr = configured_addr();
-    let db_url = configured_database_url();
+    let config = load_config();
     let db = PgPoolOptions::new()
         .max_connections(10)
-        .connect(&db_url)
+        .connect(&config.db_url)
         .await
         .expect("failed to connect to postgres");
-    ensure_schema(&db)
+    db::ensure_schema(&db)
         .await
         .expect("failed to ensure database schema");
 
-    let state = AppState { db };
+    let model_registry = ModelRegistry::load_from_dir(&config.model_dir)
+        .expect("failed to load model registry");
+    info!(
+        "loaded {} model definitions from {}",
+        model_registry.len(),
+        config.model_dir.display()
+    );
+
+    let state = AppState {
+        db,
+        tenant_id: config.tenant_id,
+        model_registry: Arc::new(model_registry),
+    };
+
     let app = Router::new()
         .route("/", get(index))
         .route("/health", get(health))
         .route("/ready", get(ready))
+        .route("/api/model", get(get_model))
         .route("/api/items", get(list_items).post(create_item))
         .route("/api/items/{id}", put(update_item).delete(delete_item))
         .with_state(state);
 
-    info!("starting inventory-core on {}", addr);
+    info!("starting inventory-core on {}", config.addr);
 
-    let listener = tokio::net::TcpListener::bind(addr)
+    let listener = tokio::net::TcpListener::bind(config.addr)
         .await
         .expect("failed to bind TCP listener");
 
@@ -84,537 +66,3 @@ async fn main() {
         .await
         .expect("server error");
 }
-
-fn init_tracing() {
-    let filter = env::var("RUST_LOG").unwrap_or_else(|_| "info,inventory_core=debug".to_string());
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .compact()
-        .init();
-}
-
-fn configured_addr() -> SocketAddr {
-    let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    format!("{}:{}", host, port)
-        .parse()
-        .expect("invalid HOST/PORT configuration")
-}
-
-fn configured_database_url() -> String {
-    env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://inventory:inventory@localhost:5432/inventory".to_string())
-}
-
-async fn ensure_schema(db: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS inventory_items (
-          id BIGSERIAL PRIMARY KEY,
-          name TEXT NOT NULL,
-          category TEXT NOT NULL,
-          quantity BIGINT NOT NULL CHECK (quantity >= 0),
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        "#,
-    )
-    .execute(db)
-    .await?;
-
-    Ok(())
-}
-
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
-        service: "inventory-core",
-    })
-}
-
-async fn ready() -> Json<ReadinessResponse> {
-    Json(ReadinessResponse {
-        status: "ready",
-        checks: ["app"],
-    })
-}
-
-async fn index() -> Html<&'static str> {
-    Html(INDEX_HTML)
-}
-
-async fn list_items(State(state): State<AppState>) -> Result<Json<Vec<Item>>, (StatusCode, String)> {
-    let items = sqlx::query_as::<_, Item>(
-        r#"
-        SELECT id, name, category, quantity
-        FROM inventory_items
-        ORDER BY id
-        "#,
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(internal_error)?;
-
-    Ok(Json(items))
-}
-
-async fn create_item(
-    State(state): State<AppState>,
-    Json(input): Json<CreateItemRequest>,
-) -> Result<(StatusCode, Json<Item>), (StatusCode, String)> {
-    validate_item_input(&input.name, &input.category, input.quantity)?;
-
-    let item = sqlx::query_as::<_, Item>(
-        r#"
-        INSERT INTO inventory_items (name, category, quantity)
-        VALUES ($1, $2, $3)
-        RETURNING id, name, category, quantity
-        "#,
-    )
-    .bind(input.name.trim())
-    .bind(input.category.trim())
-    .bind(input.quantity)
-    .fetch_one(&state.db)
-    .await
-    .map_err(internal_error)?;
-
-    Ok((StatusCode::CREATED, Json(item)))
-}
-
-async fn update_item(
-    Path(id): Path<i64>,
-    State(state): State<AppState>,
-    Json(input): Json<UpdateItemRequest>,
-) -> Result<Json<Item>, (StatusCode, String)> {
-    validate_item_input(&input.name, &input.category, input.quantity)?;
-
-    let updated = sqlx::query_as::<_, Item>(
-        r#"
-        UPDATE inventory_items
-        SET name = $1,
-            category = $2,
-            quantity = $3,
-            updated_at = NOW()
-        WHERE id = $4
-        RETURNING id, name, category, quantity
-        "#,
-    )
-    .bind(input.name.trim())
-    .bind(input.category.trim())
-    .bind(input.quantity)
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(internal_error)?;
-
-    match updated {
-        Some(item) => Ok(Json(item)),
-        None => Err((StatusCode::NOT_FOUND, "item not found".to_string())),
-    }
-}
-
-async fn delete_item(
-    Path(id): Path<i64>,
-    State(state): State<AppState>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    let result = sqlx::query(
-        r#"
-        DELETE FROM inventory_items
-        WHERE id = $1
-        "#,
-    )
-    .bind(id)
-    .execute(&state.db)
-    .await
-    .map_err(internal_error)?;
-
-    if result.rows_affected() == 0 {
-        return Err((StatusCode::NOT_FOUND, "item not found".to_string()));
-    }
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-fn validate_item_input(name: &str, category: &str, quantity: i64) -> Result<(), (StatusCode, String)> {
-    if name.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "name is required".to_string()));
-    }
-    if category.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "category is required".to_string()));
-    }
-    if quantity < 0 {
-        return Err((StatusCode::BAD_REQUEST, "quantity must be >= 0".to_string()));
-    }
-    Ok(())
-}
-
-fn internal_error(err: sqlx::Error) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, format!("database error: {err}"))
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        use tokio::signal::unix::{signal, SignalKind};
-
-        if let Ok(mut sigterm) = signal(SignalKind::terminate()) {
-            let _ = sigterm.recv().await;
-        }
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-
-    info!("shutdown signal received");
-}
-
-const INDEX_HTML: &str = r#"<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Inventory UI</title>
-  <style>
-    :root {
-      --panel: #ffffff;
-      --accent: #0f766e;
-      --accent-2: #115e59;
-      --text: #0f172a;
-      --muted: #64748b;
-      --border: #dbe2ea;
-      --danger: #b91c1c;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-      color: var(--text);
-      background: linear-gradient(120deg, #f7fafc 0%, #eef7f5 100%);
-      min-height: 100vh;
-      padding: 24px;
-    }
-    .wrap {
-      max-width: 980px;
-      margin: 0 auto;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 20px;
-      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-    }
-    .head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 14px;
-      gap: 10px;
-    }
-    h1 {
-      margin: 0 0 4px;
-      font-size: 28px;
-      letter-spacing: 0.2px;
-    }
-    .subtitle { margin: 0; color: var(--muted); }
-    input {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 8px 10px;
-      font-size: 14px;
-    }
-    button {
-      border: 0;
-      border-radius: 10px;
-      padding: 8px 12px;
-      font-size: 14px;
-      cursor: pointer;
-      background: var(--accent);
-      color: white;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    button:hover { background: var(--accent-2); }
-    button.secondary {
-      background: transparent;
-      color: var(--accent);
-      border: 1px solid var(--accent);
-    }
-    button.danger {
-      background: white;
-      color: var(--danger);
-      border: 1px solid #fecaca;
-    }
-    button.ghost {
-      background: white;
-      color: var(--muted);
-      border: 1px solid var(--border);
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    th, td {
-      text-align: left;
-      padding: 10px;
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
-    th {
-      background: #f8fafc;
-      color: #334155;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    tr:last-child td { border-bottom: 0; }
-    .row-actions {
-      display: flex;
-      gap: 6px;
-    }
-    .muted { color: var(--muted); }
-    .error {
-      color: var(--danger);
-      margin-top: 10px;
-      min-height: 20px;
-    }
-    .id-cell { color: var(--muted); font-size: 12px; }
-    .qty-input { max-width: 110px; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="head">
-      <div>
-        <h1>Household Inventory</h1>
-        <p class="subtitle">Inline table editing wired to <code>/api/items</code></p>
-      </div>
-      <button id="add-row-btn" title="Add row">+ Add row</button>
-    </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 60px;">ID</th>
-          <th>Name</th>
-          <th>Category</th>
-          <th style="width: 140px;">Quantity</th>
-          <th style="width: 250px;">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="items-body"></tbody>
-    </table>
-    <p id="empty" class="muted">No items yet. Click <b>+ Add row</b> to create one.</p>
-    <p id="error" class="error"></p>
-  </div>
-
-  <script>
-    const bodyEl = document.getElementById("items-body");
-    const emptyEl = document.getElementById("empty");
-    const errorEl = document.getElementById("error");
-    const addRowBtn = document.getElementById("add-row-btn");
-
-    let itemsCache = [];
-    let draftRowActive = false;
-
-    function setError(message) {
-      errorEl.textContent = message || "";
-    }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll("\"", "&quot;")
-        .replaceAll("'", "&#39;");
-    }
-
-    async function fetchItems() {
-      const res = await fetch("/api/items");
-      if (!res.ok) throw new Error("Failed to fetch items");
-      return res.json();
-    }
-
-    async function createItem(payload) {
-      const res = await fetch("/api/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await res.text() || "Failed to create item");
-    }
-
-    async function updateItem(id, payload) {
-      const res = await fetch(`/api/items/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await res.text() || "Failed to update item");
-    }
-
-    async function removeItem(id) {
-      const res = await fetch(`/api/items/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text() || "Failed to delete item");
-    }
-
-    function validatePayload(payload) {
-      if (!payload.name || !payload.category) {
-        throw new Error("Name and category are required");
-      }
-      if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
-        throw new Error("Quantity must be a non-negative integer");
-      }
-    }
-
-    function rowEditorMarkup(id, initial) {
-      return `
-        <td class="id-cell">${id ? id : "new"}</td>
-        <td><input data-field="name" value="${escapeHtml(initial.name || "")}" placeholder="Item name" /></td>
-        <td><input data-field="category" value="${escapeHtml(initial.category || "")}" placeholder="Category" /></td>
-        <td><input data-field="quantity" class="qty-input" type="number" min="0" value="${Number.isInteger(initial.quantity) ? initial.quantity : 0}" /></td>
-        <td>
-          <div class="row-actions">
-            <button class="save-btn">${id ? "Save" : "Create"}</button>
-            <button class="ghost cancel-btn">Cancel</button>
-            ${id ? `<button class="danger delete-btn">Delete</button>` : ""}
-          </div>
-        </td>
-      `;
-    }
-
-    function rowReadMarkup(item) {
-      return `
-        <td class="id-cell">${item.id}</td>
-        <td>${escapeHtml(item.name)}</td>
-        <td>${escapeHtml(item.category)}</td>
-        <td>${item.quantity}</td>
-        <td>
-          <div class="row-actions">
-            <button class="secondary edit-btn">Edit</button>
-            <button class="danger delete-btn">Delete</button>
-          </div>
-        </td>
-      `;
-    }
-
-    function getPayloadFromRow(tr) {
-      return {
-        name: tr.querySelector('[data-field="name"]').value.trim(),
-        category: tr.querySelector('[data-field="category"]').value.trim(),
-        quantity: Number(tr.querySelector('[data-field="quantity"]').value),
-      };
-    }
-
-    function bindReadRow(tr, item) {
-      tr.querySelector(".edit-btn").addEventListener("click", () => {
-        tr.innerHTML = rowEditorMarkup(item.id, item);
-        bindEditRow(tr, item.id, item);
-      });
-
-      tr.querySelector(".delete-btn").addEventListener("click", async () => {
-        try {
-          await removeItem(item.id);
-          await refresh();
-        } catch (err) {
-          setError(err.message || "Delete failed");
-        }
-      });
-    }
-
-    function bindEditRow(tr, id, original) {
-      tr.querySelector(".save-btn").addEventListener("click", async () => {
-        try {
-          setError("");
-          const payload = getPayloadFromRow(tr);
-          validatePayload(payload);
-
-          if (id) {
-            await updateItem(id, payload);
-          } else {
-            await createItem(payload);
-            draftRowActive = false;
-          }
-          await refresh();
-        } catch (err) {
-          setError(err.message || "Save failed");
-        }
-      });
-
-      tr.querySelector(".cancel-btn").addEventListener("click", async () => {
-        if (!id) {
-          draftRowActive = false;
-          tr.remove();
-          if (!bodyEl.children.length) {
-            emptyEl.style.display = "block";
-          }
-          return;
-        }
-        tr.innerHTML = rowReadMarkup(original);
-        bindReadRow(tr, original);
-      });
-
-      const deleteBtn = tr.querySelector(".delete-btn");
-      if (deleteBtn) {
-        deleteBtn.addEventListener("click", async () => {
-          try {
-            await removeItem(id);
-            await refresh();
-          } catch (err) {
-            setError(err.message || "Delete failed");
-          }
-        });
-      }
-    }
-
-    function renderRows(items) {
-      bodyEl.innerHTML = "";
-      emptyEl.style.display = items.length ? "none" : "block";
-
-      for (const item of items) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = rowReadMarkup(item);
-        bodyEl.appendChild(tr);
-        bindReadRow(tr, item);
-      }
-    }
-
-    async function refresh() {
-      setError("");
-      itemsCache = await fetchItems();
-      renderRows(itemsCache);
-    }
-
-    addRowBtn.addEventListener("click", () => {
-      setError("");
-      if (draftRowActive) {
-        setError("Finish the new row first.");
-        return;
-      }
-      draftRowActive = true;
-      emptyEl.style.display = "none";
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = rowEditorMarkup(null, { name: "", category: "", quantity: 0 });
-      bodyEl.prepend(tr);
-      bindEditRow(tr, null, null);
-    });
-
-    refresh().catch((err) => setError(err.message || "Failed to load"));
-  </script>
-</body>
-</html>
-"#;

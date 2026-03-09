@@ -1,0 +1,16 @@
+#:schema ../../schemas/entity-definition.schema.json
+# Inventory item model
+format_version = 1
+version = "1.0.0"
+
+[entity]
+name = "item"
+table = "items"
+description = "Primary inventory record."
+fields = [
+  { name = "name", type = "string", default = "", indexed = true },
+  { name = "category_id", type = "reference", default = "none", destination_type = "category" },
+  { name = "quantity", type = "integer", default = 0 },
+  { name = "created_at", type = "timestamp", default = "now" },
+  { name = "updated_at", type = "timestamp", default = "now" },
+]

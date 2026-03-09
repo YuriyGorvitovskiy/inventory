@@ -15,12 +15,19 @@ Household inventory manager and Cloud PLM prototype platform.
   - `POST /api/items`
   - `PUT /api/items/{id}`
   - `DELETE /api/items/{id}`
+- Model inspection API:
+  - `GET /api/model`
+- API identifiers are numeric per-entity-table (`int64` / `BIGINT`).
+- Tenant context is resolved from authenticated session/token claims.
+- Service routing is encoded in gateway paths (example: `/inventory/...`).
+- Composite global IDs are primarily for logs, tracing, and events.
 - Dockerfile for `inventory-core`.
 - One-line Docker pipeline script (`scripts/docker-pipeline.sh`).
 - Kubernetes manifests (`kustomize`) for local cluster deployment.
 
 ## Project Layout
 - `services/inventory-core` - first Rust service
+- `models/inventory-core` - interpretive entity model files (one TOML per entity type)
 - `deploy/k8s/base` - Kubernetes manifests
 - `db/schema.sql` - initial DB schema draft
 - `docs/` - architecture and planning docs
@@ -70,6 +77,11 @@ cd /Users/yuriy/Development/inventory
 cargo run -p inventory-core
 ```
 
+Optional tenant context:
+```bash
+TENANT_ID=tenant-acme cargo run -p inventory-core
+```
+
 Test endpoints:
 ```bash
 curl http://localhost:8080/health
@@ -116,5 +128,6 @@ make k8s-delete
 ## Planning Documents
 - `docs/spec/top-level-spec.md`
 - `docs/spec/dynamic-entity-model.md`
+- `docs/spec/entity-definition-format.md`
 - `docs/plan/implementation-plan.md`
 - `docs/plan/work-breakdown.md`

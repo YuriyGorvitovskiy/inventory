@@ -1,5 +1,28 @@
 # Domain Model
 
+## Global Entity Identity
+Every entity is identified globally with four segments:
+- tenant
+- owner service
+- entity type
+- local entity id (`int64`)
+
+Canonical string format:
+- `tenant.owner_service.entity_type.id`
+- Example: `tenant-local.inventory-core.item.42`
+
+Relational partitioning model:
+- Tenant by database
+- Service by schema
+- Type by table
+- Id by table primary key (`BIGINT`)
+
+Identifier exposure policy:
+- Product APIs primarily expose table-local numeric `id`.
+- Tenant is resolved from authenticated session context, not request body/query.
+- Service is encoded in API gateway route and forwarded to service boundary.
+- Composite ID is used mainly for logging, tracing, and event payloads.
+
 ## Core Entities (Shared Household + PLM Path)
 
 ### Item

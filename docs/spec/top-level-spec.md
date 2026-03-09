@@ -84,14 +84,22 @@ graph LR
     AS --> AI
 ```
 
-## 5. Data Architecture: Dynamic Universal Entity Model
-All business entities are persisted as rows in a single `entities` table.
-- Every object (Item, Category, Location, Relationship, ShoppingListEntry, etc.) is one entity row.
-- Many-to-many relationships are modeled as explicit relationship entities.
-- Type shape is controlled by runtime metadata (`entity_types`, `entity_fields`).
+## 5. Data Architecture: Tenant DB + Service Schema + Type Table
+Persistence boundaries:
+- Tenant isolation by database.
+- Service ownership by schema inside tenant database.
+- Entity type by dedicated table inside service schema.
+- Entity identity in storage by table-local `BIGINT` primary key.
 
-This supports runtime extensibility without schema migration for each new business type.
-OOTB core services remain stable while tenant customizations are handled through a separate service boundary.
+Identity model:
+- Canonical global identity segments are `tenant.service.type.id`.
+- Composite global ID is mostly for logs, tracing, events, and cross-service audit.
+- Product CRUD APIs primarily use numeric table-local `id`.
+
+Routing and auth model:
+- API gateway path encodes service boundary (example: `/inventory/...`).
+- Tenant context is resolved from authenticated session/token claims.
+- Services enforce tenant scope from trusted auth context, not client-provided tenant fields.
 
 ## 6. Service Catalog
 ### 6.1 API Gateway
@@ -173,6 +181,11 @@ Tenant-specific overlays are exposed by the Customization Service:
 - `PolicyOverlay` (tenant-specific constraints and allowed actions)
 - `AssociationType` (how extension entities link to OOTB entities)
 
+Source-of-truth authoring format for service models:
+- one TOML file per entity type (`models/<service>/*.model.toml`)
+- comments allowed for maintainability
+- format is specified in `docs/spec/entity-definition-format.md`
+
 ## 8. Runtime Custom Logic Update
 Target mechanism:
 - Logic packages are uploaded/versioned (WASM or DSL-driven rule bundles).
@@ -232,7 +245,7 @@ Requirements:
 - Settings
 - Meta-model definitions
 - Tenant overlays and extension metadata
-- Universal entities
+- Service-owned relational entity tables
 - Inventory events
 - Shopping lists and recommendations
 - Predictions and analytics snapshots

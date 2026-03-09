@@ -12,25 +12,25 @@ Migration streams:
 
 ## 2. Phases and Deliverables
 
-### Phase 0: Foundation + Dynamic Data Spike (Week 1)
+### Phase 0: Foundation + Tenant-Scoped Data Topology (Week 1)
 Deliverables:
 - Monorepo layout for Rust microservices.
 - Local k3s cluster bootstrap scripts and baseline manifests.
 - Postgres + Kafka running in cluster.
 - API gateway stub with health checks.
 - Meta-Model service skeleton.
-- Universal `entities` table spike with JSONB indexes.
+- Tenant DB + service schema conventions and bootstrap scripts.
 - OTEL collector deployment and basic telemetry export from one sample service.
 
 Exit criteria:
 - `kubectl get pods` healthy for core infra.
 - One sample Rust service reachable via gateway.
-- POC CRUD over `entities` with type validation.
+- POC CRUD over service-owned typed tables with tenant-scoped connection context.
 - Baseline dashboard shows request count/latency/error for gateway + sample service.
 
-### Phase 1: Core Inventory Vertical Slice on Universal Model (Weeks 2-3)
+### Phase 1: Core Inventory Vertical Slice on Typed Relational Model (Weeks 2-3)
 Deliverables:
-- Inventory service using universal entity model.
+- Inventory service using typed relational tables.
 - Identity service minimal auth + JWT.
 - UI with login and dynamic inventory forms.
 - Runtime type definitions for item/category/location/relation entities.
@@ -107,8 +107,8 @@ Exit criteria:
 - Autoscaling: HPA for steady services, KEDA for event-driven and optional scale-to-zero.
 
 ## 4. Risks and Mitigation
-- Universal-table performance degradation.
-  - Mitigation: targeted indexes, read projections, benchmark gates per phase.
+- Multi-tenant DB lifecycle and operational sprawl.
+  - Mitigation: provisioning automation, tenant onboarding/offboarding runbooks, backup policy by tenant tier.
 - Runtime logic introduces instability.
   - Mitigation: sandbox limits, staged rollout, fast rollback.
 - Cross-service coupling between OOTB and customization services.
