@@ -9,10 +9,13 @@ mod ui;
 use axum::{routing::{get, put}, Router};
 use config::{init_tracing, load_config};
 use handlers::{
-    create_item, delete_item, health, index, list_items, ready, shutdown_signal, update_item,
+    create_item, delete_item, get_model, health, index, list_items, ready, shutdown_signal,
+    update_item,
 };
+use model::ModelRegistry;
 use sqlx::postgres::PgPoolOptions;
 use state::AppState;
+use std::sync::Arc;
 use tracing::info;
 
 #[tokio::main]
@@ -29,15 +32,25 @@ async fn main() {
         .await
         .expect("failed to ensure database schema");
 
+    let model_registry = ModelRegistry::load_from_dir(&config.model_dir)
+        .expect("failed to load model registry");
+    info!(
+        "loaded {} model definitions from {}",
+        model_registry.len(),
+        config.model_dir.display()
+    );
+
     let state = AppState {
         db,
         tenant_id: config.tenant_id,
+        model_registry: Arc::new(model_registry),
     };
 
     let app = Router::new()
         .route("/", get(index))
         .route("/health", get(health))
         .route("/ready", get(ready))
+        .route("/api/model", get(get_model))
         .route("/api/items", get(list_items).post(create_item))
         .route("/api/items/{id}", put(update_item).delete(delete_item))
         .with_state(state);

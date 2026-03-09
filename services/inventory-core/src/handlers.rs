@@ -4,8 +4,14 @@ use axum::{
     response::Html,
     Json,
 };
+use serde::Serialize;
+use serde_json::Value;
 
 use crate::{
+    model::{
+        model::{DefaultValue, FieldType},
+        ParsedModel,
+    },
     models::{
         item_to_response, CreateItemRequest, HealthResponse, Item, ItemResponse, ReadinessResponse,
         UpdateItemRequest,
@@ -13,6 +19,30 @@ use crate::{
     state::AppState,
     ui::INDEX_HTML,
 };
+
+#[derive(Serialize)]
+pub struct ModelApiResponse {
+    classes: Vec<ModelClassResponse>,
+}
+
+#[derive(Serialize)]
+pub struct ModelClassResponse {
+    name: String,
+    version: String,
+    description: String,
+    table: String,
+    fields: Vec<ModelFieldResponse>,
+}
+
+#[derive(Serialize)]
+pub struct ModelFieldResponse {
+    name: String,
+    field_type: String,
+    destination_type: String,
+    description: String,
+    default_value: Value,
+    indexed: bool,
+}
 
 pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
@@ -30,6 +60,19 @@ pub async fn ready() -> Json<ReadinessResponse> {
 
 pub async fn index() -> Html<&'static str> {
     Html(INDEX_HTML)
+}
+
+pub async fn get_model(State(state): State<AppState>) -> Json<ModelApiResponse> {
+    let mut names: Vec<_> = state.model_registry.entities().collect();
+    names.sort_unstable();
+
+    let classes = names
+        .into_iter()
+        .filter_map(|name| state.model_registry.get(name))
+        .map(parsed_to_class)
+        .collect();
+
+    Json(ModelApiResponse { classes })
 }
 
 pub async fn list_items(
@@ -179,4 +222,53 @@ fn internal_error(err: sqlx::Error) -> (StatusCode, String) {
         StatusCode::INTERNAL_SERVER_ERROR,
         format!("database error: {err}"),
     )
+}
+
+fn parsed_to_class(parsed: &ParsedModel) -> ModelClassResponse {
+    ModelClassResponse {
+        name: parsed.model.entity.name.clone(),
+        version: parsed.model.version.to_string(),
+        description: parsed.model.entity.description.clone(),
+        table: parsed.orm.entity.table.clone(),
+        fields: parsed
+            .model
+            .entity
+            .fields
+            .iter()
+            .map(|field| ModelFieldResponse {
+                name: field.name.clone(),
+                field_type: field_type_to_str(field.field_type).to_string(),
+                destination_type: field.destination_type.clone(),
+                description: field.description.clone(),
+                default_value: default_to_json(&field.default),
+                indexed: field.indexed,
+            })
+            .collect(),
+    }
+}
+
+fn field_type_to_str(field_type: FieldType) -> &'static str {
+    match field_type {
+        FieldType::Boolean => "boolean",
+        FieldType::Integer => "integer",
+        FieldType::Float => "float",
+        FieldType::Timestamp => "timestamp",
+        FieldType::String => "string",
+        FieldType::Text => "text",
+        FieldType::Reference => "reference",
+    }
+}
+
+fn default_to_json(default: &DefaultValue) -> Value {
+    match default {
+        DefaultValue::Boolean(v) => Value::Bool(*v),
+        DefaultValue::Integer(v) => Value::Number((*v).into()),
+        DefaultValue::Float(v) => serde_json::Number::from_f64(*v)
+            .map(Value::Number)
+            .unwrap_or_else(|| Value::String(v.to_string())),
+        DefaultValue::Timestamp(v) => Value::String(v.clone()),
+        DefaultValue::String(v) => Value::String(v.clone()),
+        DefaultValue::Text(v) => Value::String(v.clone()),
+        DefaultValue::ReferenceId(v) => Value::Number((*v).into()),
+    }
 }

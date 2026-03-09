@@ -1,6 +1,7 @@
 #:schema ../../schemas/entity-definition.schema.json
 # Inventory item model
 format_version = 1
+version = "1.0.0"
 
 [entity]
 name = "item"

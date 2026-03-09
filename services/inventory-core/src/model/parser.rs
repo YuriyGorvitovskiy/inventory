@@ -5,9 +5,9 @@ use std::path::Path;
 use semver::Version;
 
 use crate::model::error::ModelError;
+use crate::model::model::{DefaultValue, Field, FieldType, Model, Type};
 use crate::model::orm::{IdPolicy, OrmModel, OrmType};
 use crate::model::raw::{RawDefault, RawField, RawModelFile};
-use crate::model::types::{DefaultValue, Field, FieldType, Model, Type};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedModel {

@@ -12,8 +12,10 @@ RUN useradd --create-home --uid 10001 app
 WORKDIR /home/app
 
 COPY --from=builder /app/target/release/inventory-core /usr/local/bin/inventory-core
+COPY models/inventory-core /opt/inventory/models/inventory-core
 
 USER app
 EXPOSE 8080
 ENV PORT=8080
+ENV MODEL_DIR=/opt/inventory/models/inventory-core
 CMD ["inventory-core"]

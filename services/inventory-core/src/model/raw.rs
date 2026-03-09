@@ -1,4 +1,4 @@
-use crate::model::types::FieldType;
+use crate::model::model::FieldType;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

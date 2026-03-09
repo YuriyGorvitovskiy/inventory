@@ -13,7 +13,7 @@ The format is designed for:
 - forward-compatible extension
 
 ## 2. Format Choice
-Use **TOML** (`.entity.toml`):
+Use **TOML** (`.model.toml`):
 - supports comments (`# ...`)
 - easy to diff and review
 - easy to parse with mature Rust libraries
@@ -23,11 +23,11 @@ JSON is intentionally not used.
 
 ## 3. File Layout
 One file per entity type:
-- `models/<service>/<entity>.entity.toml`
+- `models/<service>/<entity>.model.toml`
 
 Examples:
-- `models/inventory-core/item.entity.toml`
-- `models/inventory-core/category.entity.toml`
+- `models/inventory-core/item.model.toml`
+- `models/inventory-core/category.model.toml`
 
 ## 4. Primitive Types (v1)
 Supported field `type` values:
@@ -42,6 +42,7 @@ Supported field `type` values:
 ## 5. Entity File Schema (v1)
 Top-level keys:
 - `format_version` (integer, required)
+- `version` (semantic version string, required)
 - `[entity]` table (required)
 
 ### 5.1 `[entity]`
@@ -105,8 +106,9 @@ Default implicit id policy:
 
 ## 8. Example
 ```toml
-# models/inventory-core/item.entity.toml
+# models/inventory-core/item.model.toml
 format_version = 1
+version = "1.0.0"
 
 [entity]
 name = "item"
@@ -123,6 +125,7 @@ fields = [
 
 ## 9. Validation Rules (Minimum)
 - `format_version` must be supported.
+- `version` must be valid semantic version (for example `1.0.0`).
 - Entity name must be unique within service model set.
 - Field names must be unique within entity.
 - `id` field name is reserved and cannot be declared in `entity.fields`.
@@ -157,8 +160,8 @@ Recommended per-file directive (already used in examples):
 
 ### VS Code
 - Install `Even Better TOML` (Taplo).
-- Open a `*.entity.toml` file; Taplo reads `#:schema` and provides validation/autocomplete.
+- Open a `*.model.toml` file; Taplo reads `#:schema` and provides validation/autocomplete.
 
 ### JetBrains IDEs
 - Ensure TOML plugin is enabled.
-- Map `schemas/entity-definition.schema.json` to `models/**/*.entity.toml` in JSON Schema settings, or use a TOML plugin that supports `#:schema`.
+- Map `schemas/entity-definition.schema.json` to `models/**/*.model.toml` in JSON Schema settings, or use a TOML plugin that supports `#:schema`.

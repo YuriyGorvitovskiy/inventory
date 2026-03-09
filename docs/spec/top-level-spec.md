@@ -182,7 +182,7 @@ Tenant-specific overlays are exposed by the Customization Service:
 - `AssociationType` (how extension entities link to OOTB entities)
 
 Source-of-truth authoring format for service models:
-- one TOML file per entity type (`models/<service>/*.entity.toml`)
+- one TOML file per entity type (`models/<service>/*.model.toml`)
 - comments allowed for maintainability
 - format is specified in `docs/spec/entity-definition-format.md`
 

@@ -1,6 +1,7 @@
 #:schema ../../schemas/entity-definition.schema.json
 # Item category model
 format_version = 1
+version = "1.0.0"
 
 [entity]
 name = "category"

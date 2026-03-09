@@ -3,12 +3,17 @@
   "$id": "https://inventory.local/schemas/entity-definition.schema.json",
   "title": "Entity Definition Format v1",
   "type": "object",
-  "required": ["format_version", "entity"],
+  "required": ["format_version", "version", "entity"],
   "properties": {
     "format_version": {
       "type": "integer",
       "enum": [1],
       "description": "Format version for compatibility checks."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Semantic version of the business model definition."
     },
     "entity": {
       "$ref": "#/$defs/entity"

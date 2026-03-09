@@ -1,9 +1,10 @@
-use std::{env, net::SocketAddr};
+use std::{env, net::SocketAddr, path::PathBuf};
 
 pub struct AppConfig {
     pub addr: SocketAddr,
     pub db_url: String,
     pub tenant_id: String,
+    pub model_dir: PathBuf,
 }
 
 pub fn init_tracing() {
@@ -20,6 +21,7 @@ pub fn load_config() -> AppConfig {
         addr: configured_addr(),
         db_url: configured_database_url(),
         tenant_id: configured_tenant_id(),
+        model_dir: configured_model_dir(),
     }
 }
 
@@ -38,4 +40,10 @@ fn configured_database_url() -> String {
 
 fn configured_tenant_id() -> String {
     env::var("TENANT_ID").unwrap_or_else(|_| "tenant-local".to_string())
+}
+
+fn configured_model_dir() -> PathBuf {
+    env::var("MODEL_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("models/inventory-core"))
 }

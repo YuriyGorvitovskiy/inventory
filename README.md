@@ -15,6 +15,8 @@ Household inventory manager and Cloud PLM prototype platform.
   - `POST /api/items`
   - `PUT /api/items/{id}`
   - `DELETE /api/items/{id}`
+- Model inspection API:
+  - `GET /api/model`
 - API identifiers are numeric per-entity-table (`int64` / `BIGINT`).
 - Tenant context is resolved from authenticated session/token claims.
 - Service routing is encoded in gateway paths (example: `/inventory/...`).

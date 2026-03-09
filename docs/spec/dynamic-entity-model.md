@@ -6,7 +6,7 @@ Entity metadata is interpreted from model files at service startup/runtime.
 
 Model file format reference:
 - `docs/spec/entity-definition-format.md`
-- one file per entity type under `models/<service>/*.entity.toml`
+- one file per entity type under `models/<service>/*.model.toml`
 
 ## 2. Persistence Topology
 - Tenant isolation: one database per tenant.
