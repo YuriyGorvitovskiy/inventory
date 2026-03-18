@@ -1,4 +1,5 @@
-use crate::model::{load_model, parse_model, DefaultValue, IdPolicy};
+use crate::model::{load_model, parse_model, DefaultValue};
+use crate::schema::DBType;
 
 use std::fs;
 
@@ -24,8 +25,19 @@ fields = [
     assert_eq!(parsed.model.entity.name, "item");
     assert_eq!(parsed.model.entity.fields.len(), 4);
     assert_eq!(parsed.model.entity.description, "");
-    assert_eq!(parsed.orm.entity.table, "items");
-    assert_eq!(parsed.orm.entity.id_policy, IdPolicy::ImplicitInt64);
+    assert_eq!(parsed.schema.name, "item");
+    assert_eq!(parsed.schema.tables.len(), 1);
+    assert_eq!(parsed.schema.tables[0].name, "items");
+    assert_eq!(parsed.schema.tables[0].columns[0].name, "id");
+    assert_eq!(parsed.schema.tables[0].columns[0].data_type, DBType::BigInt);
+    assert_eq!(
+        parsed.schema.tables[0].primary_key.name,
+        "pk_items"
+    );
+    assert_eq!(
+        parsed.schema.tables[0].indexes[0].name,
+        "idx_items_category_id"
+    );
     assert_eq!(
         parsed.model.entity.fields[1].default,
         DefaultValue::ReferenceId(0),
@@ -33,6 +45,31 @@ fields = [
     );
     assert_eq!(parsed.model.entity.fields[1].destination_type, "category");
     assert_eq!(parsed.model.entity.fields[0].destination_type, "");
+}
+
+#[test]
+fn generates_reference_and_explicit_indexes_in_schema() {
+    let src = r#"
+format_version = 1
+version = "1.0.0"
+
+[entity]
+name = "item"
+table = "items"
+fields = [
+  { name = "name", type = "string", default = "", indexed = true },
+  { name = "category_id", type = "reference", default = "none", destination_type = "category" },
+  { name = "quantity", type = "integer", default = 0 }
+]
+"#;
+
+    let parsed = parse_model(src).expect("model should parse");
+    let table = &parsed.schema.tables[0];
+
+    assert_eq!(table.primary_key.columns, vec!["id".to_string()]);
+    assert_eq!(table.indexes.len(), 2);
+    assert_eq!(table.indexes[0].columns, vec!["name".to_string()]);
+    assert_eq!(table.indexes[1].columns, vec!["category_id".to_string()]);
 }
 
 #[test]

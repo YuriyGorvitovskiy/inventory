@@ -229,7 +229,7 @@ fn parsed_to_class(parsed: &ParsedModel) -> ModelClassResponse {
         name: parsed.model.entity.name.clone(),
         version: parsed.model.version.to_string(),
         description: parsed.model.entity.description.clone(),
-        table: parsed.orm.entity.table.clone(),
+        table: parsed.schema.tables[0].name.clone(),
         fields: parsed
             .model
             .entity

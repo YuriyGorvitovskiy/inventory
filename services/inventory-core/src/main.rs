@@ -1,8 +1,9 @@
 mod config;
 mod db;
-mod model;
 mod handlers;
+mod model;
 mod models;
+mod schema;
 mod state;
 mod ui;
 
