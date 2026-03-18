@@ -131,3 +131,6 @@ make k8s-delete
 - `docs/spec/entity-definition-format.md`
 - `docs/plan/implementation-plan.md`
 - `docs/plan/work-breakdown.md`
+- `docs/plan/persistence-plan.md`
+- `docs/spec/persistence-requirements-overview.md`
+- `docs/spec/dynamic-model-schema-mapping-requirements.md`
