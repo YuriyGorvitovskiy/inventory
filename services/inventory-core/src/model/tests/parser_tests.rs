@@ -1,5 +1,6 @@
 use crate::model::{load_model, parse_model, DefaultValue};
-use crate::schema::DBType;
+use crate::schema::DataType;
+use im::vector;
 
 use std::fs;
 
@@ -29,7 +30,7 @@ fields = [
     assert_eq!(parsed.schema.tables.len(), 1);
     assert_eq!(parsed.schema.tables[0].name, "items");
     assert_eq!(parsed.schema.tables[0].columns[0].name, "id");
-    assert_eq!(parsed.schema.tables[0].columns[0].data_type, DBType::BigInt);
+    assert_eq!(parsed.schema.tables[0].columns[0].data_type, DataType::BigInt);
     assert_eq!(
         parsed.schema.tables[0].primary_key.name,
         "pk_items"
@@ -66,10 +67,10 @@ fields = [
     let parsed = parse_model(src).expect("model should parse");
     let table = &parsed.schema.tables[0];
 
-    assert_eq!(table.primary_key.columns, vec!["id".to_string()]);
+    assert_eq!(table.primary_key.columns, vector!["id".to_string()]);
     assert_eq!(table.indexes.len(), 2);
-    assert_eq!(table.indexes[0].columns, vec!["name".to_string()]);
-    assert_eq!(table.indexes[1].columns, vec!["category_id".to_string()]);
+    assert_eq!(table.indexes[0].columns, vector!["name".to_string()]);
+    assert_eq!(table.indexes[1].columns, vector!["category_id".to_string()]);
 }
 
 #[test]

@@ -1,4 +1,5 @@
 use crate::schema::{SqlParameter, SqlStatement};
+use im::Vector;
 use sqlx::{postgres::PgArguments, query::Query, PgPool, Postgres};
 
 pub struct Database<'a> {
@@ -17,7 +18,7 @@ impl<'a> Database<'a> {
         Ok(())
     }
 
-    pub async fn execute_all(&self, statements: &[SqlStatement]) -> Result<(), sqlx::Error> {
+    pub async fn execute_all(&self, statements: &Vector<SqlStatement>) -> Result<(), sqlx::Error> {
         let mut tx = self.db.begin().await?;
 
         for statement in statements {
@@ -33,7 +34,7 @@ impl<'a> Database<'a> {
 
 fn bind_parameters<'q>(
     mut query: Query<'q, Postgres, PgArguments>,
-    parameters: &'q [SqlParameter],
+    parameters: &'q Vector<SqlParameter>,
 ) -> Query<'q, Postgres, PgArguments> {
     for parameter in parameters {
         query = match parameter {

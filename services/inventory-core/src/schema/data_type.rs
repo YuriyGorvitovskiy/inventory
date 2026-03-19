@@ -5,7 +5,7 @@ pub enum Length {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DBType {
+pub enum DataType {
     Boolean,
     BigInt,
     DoublePrecision,
@@ -15,7 +15,7 @@ pub enum DBType {
     Text,
 }
 
-impl DBType {
+impl DataType {
     pub const VARCHAR_850_LENGTH: Length = Length::Bounded(850);
     pub const VARCHAR_64_LENGTH: Length = Length::Bounded(64);
     pub const BOOLEAN_LENGTH: Length = Length::Bounded(1);

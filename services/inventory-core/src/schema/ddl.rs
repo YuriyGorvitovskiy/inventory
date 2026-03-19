@@ -1,34 +1,33 @@
-use crate::schema::{Column, Index, PrimaryKey, Schema, SqlStatement, Table};
+use crate::schema::{Column, Index, PrimaryKey, Schema, SqlStatement, Table, VectorAppend};
+use im::Vector;
 
-pub fn create_schema_statements(schema: &Schema) -> Vec<SqlStatement> {
-    let mut statements = vec![create_schema_statement(schema)];
+pub fn create_schema_statements(schema: &Schema) -> Vector<SqlStatement> {
+    schema.tables.iter().fold(
+        Vector::unit(create_schema_statement(schema)),
+        |statements, table| {
+            let statements = statements
+                .append(create_table(schema, table))
+                .append(add_primary_key(schema, table));
 
-    for table in &schema.tables {
-        statements.push(create_table(schema, table));
-        statements.push(add_primary_key(schema, table));
-
-        for index in &table.indexes {
-            statements.push(create_index(schema, table, index));
-        }
-    }
-
-    statements
+            table.indexes.iter().fold(statements, |statements, index| {
+                statements.append(create_index(schema, table, index))
+            })
+        },
+    )
 }
 
-pub fn drop_schema_statements(schema: &Schema) -> Vec<SqlStatement> {
-    let mut statements = Vec::new();
+pub fn drop_schema_statements(schema: &Schema) -> Vector<SqlStatement> {
+    let statements = schema.tables.iter().rev().fold(Vector::new(), |statements, table| {
+        let statements = table.indexes.iter().rev().fold(statements, |statements, index| {
+            statements.append(drop_index(schema, index))
+        });
 
-    for table in schema.tables.iter().rev() {
-        for index in table.indexes.iter().rev() {
-            statements.push(drop_index(schema, index));
-        }
+        statements
+            .append(drop_primary_key(schema, table))
+            .append(drop_table(schema, table))
+    });
 
-        statements.push(drop_primary_key(schema, table));
-        statements.push(drop_table(schema, table));
-    }
-    statements.push(drop_schema_statement(schema));
-
-    statements
+    statements.append(drop_schema_statement(schema))
 }
 
 pub fn create_schema_statement(schema: &Schema) -> SqlStatement {
@@ -44,13 +43,13 @@ pub fn drop_schema_statement(schema: &Schema) -> SqlStatement {
 }
 
 pub fn create_table(schema: &Schema, table: &Table) -> SqlStatement {
-    let column_sql: Vec<String> = table.columns.iter().map(build_column_sql).collect();
+    let column_sql: Vector<String> = table.columns.iter().map(build_column_sql).collect();
 
     SqlStatement::new(
         format!(
             "CREATE TABLE IF NOT EXISTS {} (\n  {}\n)",
             qualify_table_name(schema, table),
-            column_sql.join(",\n  ")
+            column_sql.iter().cloned().collect::<Vec<_>>().join(",\n  ")
         ),
     )
 }
@@ -83,7 +82,7 @@ pub fn create_index(schema: &Schema, table: &Table, index: &Index) -> SqlStateme
             unique,
             qualify_index_name(schema, index),
             qualify_table_name(schema, table),
-            index.columns.join(", ")
+            index.columns.iter().cloned().collect::<Vec<_>>().join(", ")
         ),
     )
 }
@@ -111,7 +110,7 @@ fn create_primary_key(schema: &Schema, table: &Table, primary_key: &PrimaryKey) 
             "ALTER TABLE {} ADD CONSTRAINT {} PRIMARY KEY ({})",
             qualify_table_name(schema, table),
             primary_key.name,
-            primary_key.columns.join(", ")
+            primary_key.columns.iter().cloned().collect::<Vec<_>>().join(", ")
         ),
     )
 }
