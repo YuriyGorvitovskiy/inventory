@@ -1,0 +1,5 @@
+kind = "context_query_definition"
+version = "1.0.0"
+name = "inventory.item.by_id"
+root_entity = "item"
+description = "Resolve one inventory item by id for the active tenant."

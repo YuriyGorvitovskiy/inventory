@@ -1,30 +1,32 @@
 mod column;
 mod data_type;
+#[cfg(test)]
 mod database;
+#[cfg(test)]
 mod ddl;
 mod index;
+#[cfg(test)]
 mod meta;
 mod primary_key;
 mod schema;
+#[cfg(test)]
 mod sql;
 mod table;
+#[cfg(test)]
 mod vector;
 
 pub use column::Column;
-pub use data_type::{DataType, Length};
+pub use data_type::DataType;
+#[cfg(test)]
 pub use ddl::{
-    add_primary_key, create_index, create_schema_statement, create_schema_statements,
-    create_table, drop_index, drop_primary_key, drop_schema_statement, drop_schema_statements,
-    drop_table,
+    create_index, create_schema_statements, drop_schema_statements,
 };
-pub use database::Database;
 pub use index::Index;
+#[cfg(test)]
 pub use meta::persistence_catalog;
 pub use primary_key::PrimaryKey;
 pub use schema::Schema;
-pub use sql::{SqlParameter, SqlStatement};
 pub use table::Table;
-pub use vector::VectorAppend;
 
 #[cfg(test)]
 mod tests;

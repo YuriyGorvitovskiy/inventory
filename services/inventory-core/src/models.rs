@@ -44,17 +44,3 @@ pub struct UpdateItemRequest {
     pub category: String,
     pub quantity: i64,
 }
-
-pub fn item_to_response(tenant_id: &str, item: Item) -> ItemResponse {
-    let entity_id = format!(
-        "{}.{}.{}.{}",
-        tenant_id, item.owner_service, item.entity_type, item.id
-    );
-    ItemResponse {
-        id: item.id,
-        entity_id,
-        name: item.name,
-        category: item.category,
-        quantity: item.quantity,
-    }
-}

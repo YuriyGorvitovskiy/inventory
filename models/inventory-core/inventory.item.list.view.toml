@@ -1,0 +1,7 @@
+kind = "view_definition"
+version = "1.0.0"
+name = "inventory.item.list"
+entity_scope = "item"
+title = "Household Inventory"
+context_queries = ["inventory.items"]
+interactions = ["inventory.item.create", "inventory.item.update", "inventory.item.delete"]

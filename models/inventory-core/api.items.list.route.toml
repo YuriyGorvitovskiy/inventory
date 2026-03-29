@@ -1,0 +1,4 @@
+kind = "runtime_route"
+version = "1.0.0"
+name = "api.items.list"
+target = "items.list"

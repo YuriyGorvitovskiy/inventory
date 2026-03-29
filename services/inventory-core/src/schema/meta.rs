@@ -1,4 +1,4 @@
-use crate::schema::{Column, Schema, Table};
+use crate::schema::{Schema, Table};
 use crate::schema::DataType::{BigInt, Boolean, VarChar64, VarChar850};
 
 pub fn persistence_catalog() -> Schema {

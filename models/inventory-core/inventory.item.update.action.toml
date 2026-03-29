@@ -1,0 +1,5 @@
+kind = "action_definition"
+version = "1.0.0"
+name = "inventory.item.update"
+description = "Update an existing inventory item and emit an update event."
+context_queries = ["inventory.item.by_id"]

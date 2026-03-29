@@ -9,6 +9,7 @@ pub struct Column {
 }
 
 impl Column {
+    #[cfg(test)]
     pub fn new(name: impl Into<String>, data_type: DataType, nullable: bool, default: Option<String>) -> Self {
         Self {
             name: name.into(),

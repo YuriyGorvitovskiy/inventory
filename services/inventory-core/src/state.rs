@@ -1,10 +1,6 @@
-use crate::model::ModelRegistry;
-use sqlx::PgPool;
-use std::sync::Arc;
+use crate::runtime::CoLocatedRuntime;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: PgPool,
-    pub tenant_id: String,
-    pub model_registry: Arc<ModelRegistry>,
+    pub runtime: CoLocatedRuntime,
 }

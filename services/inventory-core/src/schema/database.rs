@@ -1,4 +1,4 @@
-use crate::schema::{SqlParameter, SqlStatement};
+use crate::schema::sql::{SqlParameter, SqlStatement};
 use im::Vector;
 use sqlx::{postgres::PgArguments, query::Query, PgPool, Postgres};
 

@@ -1,0 +1,4 @@
+kind = "runtime_route"
+version = "1.0.0"
+name = "api.items.update"
+target = "action.inventory.item.update"

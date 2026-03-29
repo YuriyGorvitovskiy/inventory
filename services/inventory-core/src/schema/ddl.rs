@@ -1,4 +1,6 @@
-use crate::schema::{Column, Index, PrimaryKey, Schema, SqlStatement, Table, VectorAppend};
+use crate::schema::sql::SqlStatement;
+use crate::schema::vector::VectorAppend;
+use crate::schema::{Column, Index, PrimaryKey, Schema, Table};
 use im::Vector;
 
 pub fn create_schema_statements(schema: &Schema) -> Vector<SqlStatement> {

@@ -1,0 +1,5 @@
+kind = "action_definition"
+version = "1.0.0"
+name = "inventory.item.delete"
+description = "Delete an inventory item and emit a deletion event."
+context_queries = ["inventory.item.by_id"]

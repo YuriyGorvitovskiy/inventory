@@ -1,3 +1,4 @@
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Length {
     Bounded(usize),
@@ -11,10 +12,12 @@ pub enum DataType {
     DoublePrecision,
     TimestampWithTimeZone,
     VarChar850,
+    #[cfg_attr(not(test), allow(dead_code))]
     VarChar64,
     Text,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 impl DataType {
     pub const VARCHAR_850_LENGTH: Length = Length::Bounded(850);
     pub const VARCHAR_64_LENGTH: Length = Length::Bounded(64);

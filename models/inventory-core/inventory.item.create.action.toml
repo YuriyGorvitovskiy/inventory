@@ -1,0 +1,5 @@
+kind = "action_definition"
+version = "1.0.0"
+name = "inventory.item.create"
+description = "Create a new inventory item and emit a creation event."
+context_queries = ["inventory.items"]

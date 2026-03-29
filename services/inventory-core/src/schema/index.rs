@@ -1,4 +1,3 @@
-use crate::schema::VectorAppend;
 use im::Vector;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,6 +8,7 @@ pub struct Index {
 }
 
 impl Index {
+    #[cfg(test)]
     pub fn new<T, C>(name: impl Into<String>, columns: C, unique: bool) -> Self
     where
         T: Into<String>,
@@ -20,5 +20,4 @@ impl Index {
             unique: unique,
         }
     }
-
 }
