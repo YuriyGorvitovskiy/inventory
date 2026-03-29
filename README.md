@@ -129,6 +129,7 @@ make k8s-delete
 - `docs/spec/top-level-spec.md`
 - `docs/spec/dynamic-entity-model.md`
 - `docs/spec/entity-definition-format.md`
+- `docs/spec/state-mach-contract-foundation.md`
 - `docs/plan/implementation-plan.md`
 - `docs/plan/work-breakdown.md`
 - `docs/plan/persistence-plan.md`
