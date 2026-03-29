@@ -1,0 +1,30 @@
+flowchart LR
+    ACTION["Action Runtime"]
+    LOGIC["Business Logic"]
+    POLICY["Uniqueness Policy"]
+    PATCH["Patch Proposal"]
+    UBUS["Uniqueness Coordination Bus"]
+    UREG["Uniqueness Registry"]
+    DECISION["Coordination Result"]
+    ROUTEOK["Normal Patch Route"]
+    ROUTEALT["Alternative Business Route"]
+    STORE["Conflict-Free Storage"]
+
+    ACTION --> LOGIC --> POLICY
+    POLICY --> PATCH
+    POLICY --> UBUS
+    UBUS --> UREG
+    UREG --> DECISION
+    DECISION --> ROUTEOK
+    DECISION --> ROUTEALT
+    ROUTEOK --> STORE
+    ROUTEALT --> ACTION
+    PATCH --> ROUTEOK
+
+    classDef biz fill:#fde7c7,stroke:#b26a00,stroke-width:2px,color:#5c3b00;
+    classDef uniq fill:#ffe4e6,stroke:#be123c,stroke-width:2px,color:#4c0519;
+    classDef data fill:#d9f2df,stroke:#2f855a,stroke-width:2px,color:#123524;
+
+    class ACTION,LOGIC,POLICY,ROUTEALT biz;
+    class UBUS,UREG,DECISION uniq;
+    class PATCH,ROUTEOK,STORE data;

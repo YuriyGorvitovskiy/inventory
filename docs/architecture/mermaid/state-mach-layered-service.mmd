@@ -1,0 +1,67 @@
+flowchart TB
+    subgraph Clients["Clients"]
+        WEB["Web Client Renderer"]
+        MOB["Mobile Client Renderer"]
+    end
+
+    subgraph UI["UI Layer"]
+        UIAPI["UI Interface"]
+        UIPROC["UI Composition and Mapping"]
+        VIEWDEF["View Definitions"]
+        WIDGETS["Framework Widget Catalog"]
+    end
+
+    subgraph BIZ["Business Layer"]
+        ACT["Action Runtime"]
+        LOGIC["Pure Business Logic"]
+        UPOL["Uniqueness Policy"]
+        TRIG["Lifecycle Triggers"]
+        CTX["Context Query Processor"]
+        EVENTS["Domain Event Stream"]
+    end
+
+    subgraph DATA["Data Layer"]
+        PATCH["Patch Processor"]
+        UCOORD["Uniqueness Coordination"]
+        MODEL["Model and Relation Catalog"]
+        STORE["Owned Service Storage"]
+        REPL["Replicated Read Data"]
+    end
+
+    WEB --> UIAPI
+    MOB --> UIAPI
+
+    UIAPI --> UIPROC
+    UIPROC --> VIEWDEF
+    UIPROC --> WIDGETS
+    UIPROC --> CTX
+    UIPROC --> ACT
+    UIPROC --> UPOL
+
+    ACT --> LOGIC
+    LOGIC --> EVENTS
+    EVENTS --> TRIG
+    TRIG --> ACT
+    CTX --> LOGIC
+    CTX --> UIPROC
+    LOGIC --> UPOL
+    TRIG --> UPOL
+
+    LOGIC --> PATCH
+    TRIG --> PATCH
+    UPOL --> UCOORD
+    PATCH --> UCOORD
+    PATCH --> MODEL
+    PATCH --> STORE
+    STORE --> CTX
+    REPL --> CTX
+
+    classDef ui fill:#d7ecff,stroke:#3c6e91,stroke-width:2px,color:#102a43;
+    classDef biz fill:#fde7c7,stroke:#b26a00,stroke-width:2px,color:#5c3b00;
+    classDef data fill:#d9f2df,stroke:#2f855a,stroke-width:2px,color:#123524;
+    classDef ext fill:#f3f4f6,stroke:#6b7280,stroke-width:1.5px,color:#111827;
+
+    class WEB,MOB ext;
+    class UIAPI,UIPROC,VIEWDEF,WIDGETS ui;
+    class ACT,LOGIC,UPOL,TRIG,CTX,EVENTS biz;
+    class PATCH,UCOORD,MODEL,STORE,REPL data;

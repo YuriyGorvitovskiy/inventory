@@ -1,0 +1,30 @@
+flowchart LR
+    subgraph Small["Small Project: Co-Located Service"]
+        SUI["UI Layer"]
+        SBIZ["Business Layer"]
+        SDATA["Data Layer"]
+        SUI --> SBIZ --> SDATA
+    end
+
+    subgraph Large["Larger Project: Split Services"]
+        UIX["UI Service"]
+        BIZX["Business Service"]
+        DATAX["Data Service"]
+        UIX --> BIZX --> DATAX
+    end
+
+    CLIENT["Client Renderers"]
+    BUS["Cross-Service Event Bus"]
+
+    CLIENT --> SUI
+    CLIENT --> UIX
+    BIZX <--> BUS
+    DATAX <--> BUS
+
+    classDef small fill:#eaf4ff,stroke:#4c78a8,stroke-width:2px,color:#13293d;
+    classDef large fill:#fff1db,stroke:#c17c00,stroke-width:2px,color:#5c3b00;
+    classDef neutral fill:#f5f5f5,stroke:#6b7280,stroke-width:1.5px,color:#111827;
+
+    class SUI,SBIZ,SDATA small;
+    class UIX,BIZX,DATAX large;
+    class CLIENT,BUS neutral;

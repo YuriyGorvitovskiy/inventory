@@ -1,0 +1,53 @@
+flowchart LR
+    subgraph Inv["Inventory Service"]
+        INVB["Business Layer"]
+        INVU["Uniqueness Policy"]
+        INVD["Owned Inventory Data"]
+        INVR["Replicated External Data"]
+    end
+
+    subgraph Shop["Shopping Service"]
+        SHOPB["Business Layer"]
+        SHOPU["Uniqueness Policy"]
+        SHOPD["Owned Shopping Data"]
+        SHOPR["Replicated External Data"]
+    end
+
+    subgraph Vision["Vision Service"]
+        VISB["Business Layer"]
+        VISD["Owned Vision Data"]
+    end
+
+    BUS["Cross-Service Event Bus"]
+    UBUS["Uniqueness Coordination Bus"]
+
+    INVB --> BUS
+    SHOPB --> BUS
+    VISB --> BUS
+
+    BUS --> INVB
+    BUS --> SHOPB
+    BUS --> VISB
+
+    INVB --> INVD
+    SHOPB --> SHOPD
+    VISB --> VISD
+    INVB --> INVU
+    SHOPB --> SHOPU
+    INVU <--> UBUS
+    SHOPU <--> UBUS
+
+    BUS --> INVR
+    BUS --> SHOPR
+
+    classDef svc fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#082f49;
+    classDef data fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#052e16;
+    classDef repl fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#451a03;
+    classDef bus fill:#f5f3ff,stroke:#7c3aed,stroke-width:2px,color:#2e1065;
+    classDef uniq fill:#ffe4e6,stroke:#be123c,stroke-width:2px,color:#4c0519;
+
+    class INVB,SHOPB,VISB svc;
+    class INVU,SHOPU uniq;
+    class INVD,SHOPD,VISD data;
+    class INVR,SHOPR repl;
+    class BUS,UBUS bus;
