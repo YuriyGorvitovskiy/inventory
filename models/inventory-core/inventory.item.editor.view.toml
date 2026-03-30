@@ -1,0 +1,20 @@
+kind = "view_definition"
+version = "1.0.0"
+name = "inventory.item.editor"
+entity_scope = "item"
+params = [{ name = "id", type = "integer", required = true }]
+context_queries = [{ query = "inventory.item.by_id", bind = "item" }]
+layout = { type = "page", title = "Edit Item", children = [
+  { type = "action_bar", actions = [] },
+  { type = "text", value = { bind = "$context.item.item.entity_id" } },
+  { type = "form", fields = [
+    { key = "name", label = "Name", value = { bind = "$context.item.item.name" }, editor_kind = "label", editable = true, required = true },
+    { key = "category", label = "Category", value = { bind = "$context.item.item.category" }, editor_kind = "label", editable = true, required = true },
+    { key = "quantity", label = "Quantity", value = { bind = "$context.item.item.quantity" }, editor_kind = "integer", editable = true, required = true }
+  ] }
+] }
+interactions = [
+  { event = "save", action = "inventory.item.update" },
+  { event = "delete", action = "inventory.item.delete" },
+  { event = "back", route_to = "inventory.item.list" }
+]

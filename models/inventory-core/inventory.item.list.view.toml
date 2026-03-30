@@ -2,6 +2,18 @@ kind = "view_definition"
 version = "1.0.0"
 name = "inventory.item.list"
 entity_scope = "item"
-title = "Household Inventory"
-context_queries = ["inventory.items"]
-interactions = ["inventory.item.create", "inventory.item.update", "inventory.item.delete"]
+params = []
+context_queries = [{ query = "inventory.items", bind = "items" }]
+layout = { type = "page", title = "Household Inventory", children = [
+  { type = "action_bar", actions = ["inventory.item.create"] },
+  { type = "table", rows = { bind = "$context.items.rows" }, columns = [
+    { key = "name", header = "Name", value = { bind = "$row.name" }, editable = true, editor_kind = "label" },
+    { key = "category", header = "Category", value = { bind = "$row.category" }, editable = true, editor_kind = "label" },
+    { key = "quantity", header = "Quantity", value = { bind = "$row.quantity" }, editable = true, editor_kind = "integer" }
+  ] }
+] }
+interactions = [
+  { event = "create", action = "inventory.item.create" },
+  { event = "update", route_to = "inventory.item.editor", params = [{ name = "id", value = { bind = "$row.id" } }] },
+  { event = "delete", action = "inventory.item.delete" }
+]

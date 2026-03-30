@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
@@ -43,12 +44,98 @@ pub struct ViewDefinition {
     pub version: String,
     pub name: String,
     pub entity_scope: String,
-    pub title: String,
-    pub context_queries: Vec<String>,
-    pub interactions: Vec<String>,
+    #[serde(default)]
+    pub params: Vec<ViewParamDefinition>,
+    #[serde(default)]
+    pub context_queries: Vec<ViewContextQueryBinding>,
+    pub layout: FrameworkWidgetDefinition,
+    #[serde(default)]
+    pub interactions: Vec<ViewInteractionDefinition>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewParamDefinition {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub param_type: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewContextQueryBinding {
+    pub query: String,
+    pub bind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewInteractionDefinition {
+    pub event: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_to: Option<String>,
+    #[serde(default)]
+    pub params: Vec<ViewInteractionParamDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewInteractionParamDefinition {
+    pub name: String,
+    pub value: WidgetDataMapping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FrameworkWidgetDefinition {
+    Page {
+        title: String,
+        #[serde(default)]
+        children: Vec<FrameworkWidgetDefinition>,
+    },
+    ActionBar {
+        actions: Vec<String>,
+    },
+    Table {
+        rows: WidgetDataMapping,
+        columns: Vec<TableColumnDefinition>,
+    },
+    Form {
+        fields: Vec<FormFieldDefinition>,
+    },
+    Text {
+        value: WidgetDataMapping,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidgetDataMapping {
+    pub bind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableColumnDefinition {
+    pub key: String,
+    pub header: String,
+    pub value: WidgetDataMapping,
+    #[serde(default)]
+    pub editable: bool,
+    pub editor_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormFieldDefinition {
+    pub key: String,
+    pub label: String,
+    pub value: WidgetDataMapping,
+    pub editor_kind: String,
+    #[serde(default = "default_true")]
+    pub editable: bool,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InventoryItemRecord {
     pub id: i64,
     pub entity_id: String,
@@ -221,13 +308,13 @@ pub struct ActionPlan {
     pub event: EventCandidate,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum ActionOutcome {
     Item(InventoryItemRecord),
     Deleted { id: i64 },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ActionResult {
     pub outcome: ActionOutcome,
     pub event: EventEnvelope,
@@ -235,13 +322,63 @@ pub struct ActionResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ResolvedItemListView {
+pub struct ResolvedView {
     pub definition: ViewDefinition,
-    pub kind: &'static str,
-    pub version: &'static str,
-    pub name: &'static str,
-    pub title: &'static str,
-    pub rows: Vec<InventoryItemRecord>,
+    pub params: Map<String, Value>,
+    pub context: Map<String, Value>,
+    pub widget: ResolvedFrameworkWidget,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResolvedFrameworkWidget {
+    Page {
+        title: String,
+        children: Vec<ResolvedFrameworkWidget>,
+    },
+    ActionBar {
+        actions: Vec<ResolvedActionReference>,
+    },
+    Table {
+        columns: Vec<ResolvedTableColumn>,
+        rows: Vec<ResolvedTableRow>,
+    },
+    Form {
+        fields: Vec<ResolvedFormField>,
+    },
+    Text {
+        text: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedActionReference {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedTableColumn {
+    pub key: String,
+    pub header: String,
+    pub editable: bool,
+    pub editor_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedTableRow {
+    pub cells: Map<String, Value>,
+    pub source: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedFormField {
+    pub key: String,
+    pub label: String,
+    pub value: Value,
+    pub editor_kind: String,
+    pub editable: bool,
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -359,7 +496,8 @@ fn parsed_to_class(parsed: &ParsedModel) -> RuntimeModelClassResponse {
                 default_value: default_to_json(&field.default),
                 indexed: field.indexed,
                 required: field.required,
-                conflict_resolution: conflict_resolution_to_str(field.conflict_resolution.mode).to_string(),
+                conflict_resolution: conflict_resolution_to_str(field.conflict_resolution.mode)
+                    .to_string(),
             })
             .collect(),
     }
@@ -370,7 +508,7 @@ pub fn next_patch_id() -> String {
     format!("pat_{sequence:08}")
 }
 
-fn field_type_to_str(field_type: FieldType) -> &'static str {
+pub fn field_type_to_str(field_type: FieldType) -> &'static str {
     match field_type {
         FieldType::Label => "label",
         FieldType::Boolean => "boolean",
@@ -383,6 +521,10 @@ fn field_type_to_str(field_type: FieldType) -> &'static str {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_to_json(default: &DefaultValue) -> serde_json::Value {
     match default {
         DefaultValue::Boolean(v) => serde_json::Value::Bool(*v),
@@ -390,9 +532,10 @@ fn default_to_json(default: &DefaultValue) -> serde_json::Value {
         DefaultValue::Float(v) => serde_json::Number::from_f64(*v)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
-        DefaultValue::Label(v) | DefaultValue::Timestamp(v) | DefaultValue::String(v) | DefaultValue::Text(v) => {
-            serde_json::Value::String(v.clone())
-        }
+        DefaultValue::Label(v)
+        | DefaultValue::Timestamp(v)
+        | DefaultValue::String(v)
+        | DefaultValue::Text(v) => serde_json::Value::String(v.clone()),
         DefaultValue::ReferenceId(v) => serde_json::Value::Number((*v).into()),
     }
 }

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 #[derive(Serialize)]
 pub struct HealthResponse {
@@ -43,4 +44,12 @@ pub struct UpdateItemRequest {
     pub name: String,
     pub category: String,
     pub quantity: i64,
+}
+
+#[derive(Deserialize)]
+pub struct RuntimeActionRequest {
+    #[serde(default)]
+    pub target_id: Option<i64>,
+    #[serde(default)]
+    pub fields: Map<String, Value>,
 }

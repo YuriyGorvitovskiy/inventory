@@ -1,23 +1,15 @@
 use crate::runtime::contracts::{
-    ActionOutcome, ActionPlan, ActionResult, ContextQuery, ContextQueryResult, EventCandidate,
-    NormalizedActionInvocation, PatchCausation, PatchEnvelope, PatchOperation, PatchTarget,
-    ProjectionQuery, ProjectionResult, RequestContext, ResolvedItemListView, RuntimeError,
-    OWNED_ENTITY_TYPE, OWNED_SERVICE, next_patch_id,
+    next_patch_id, ActionOutcome, ActionPlan, ActionResult, ContextQuery, ContextQueryResult,
+    EventCandidate, NormalizedActionInvocation, PatchCausation, PatchEnvelope, PatchOperation,
+    PatchTarget, RequestContext, RuntimeError, OWNED_ENTITY_TYPE, OWNED_SERVICE,
 };
-use crate::runtime::registry::DefinitionRegistry;
 use crate::runtime::data::DataLayer;
+use crate::runtime::registry::DefinitionRegistry;
 
 #[derive(Default, Clone)]
 pub struct InventoryBusinessLayer;
 
 pub trait BusinessLayer<D: DataLayer> {
-    async fn resolve_items_view(
-        &self,
-        context: &RequestContext,
-        definitions: &DefinitionRegistry,
-        data: &D,
-    ) -> Result<ResolvedItemListView, RuntimeError>;
-
     async fn execute_action(
         &self,
         invocation: NormalizedActionInvocation,
@@ -27,29 +19,6 @@ pub trait BusinessLayer<D: DataLayer> {
 }
 
 impl<D: DataLayer> BusinessLayer<D> for InventoryBusinessLayer {
-    async fn resolve_items_view(
-        &self,
-        context: &RequestContext,
-        definitions: &DefinitionRegistry,
-        data: &D,
-    ) -> Result<ResolvedItemListView, RuntimeError> {
-        let ProjectionResult::InventoryItems(rows) = data
-            .load_projection(context, ProjectionQuery::InventoryItemList)
-            .await?;
-
-        let definition = definitions.view("inventory.item.list")?;
-        ensure_query_definitions_loaded(definitions, &definition.context_queries)?;
-
-        Ok(ResolvedItemListView {
-            definition,
-            kind: "view_definition",
-            version: "1.0.0",
-            name: "inventory.item.list",
-            title: "Household Inventory",
-            rows,
-        })
-    }
-
     async fn execute_action(
         &self,
         invocation: NormalizedActionInvocation,
@@ -67,7 +36,11 @@ impl<D: DataLayer> BusinessLayer<D> for InventoryBusinessLayer {
             Some(item) => ActionOutcome::Item(item),
             None => match deleted_id {
                 Some(id) => ActionOutcome::Deleted { id },
-                None => return Err(RuntimeError::internal("delete action completed without target id")),
+                None => {
+                    return Err(RuntimeError::internal(
+                        "delete action completed without target id",
+                    ))
+                }
             },
         };
 
@@ -115,7 +88,8 @@ async fn plan_action<D: DataLayer>(
             };
 
             let duplicate = existing.iter().any(|item| {
-                item.name.eq_ignore_ascii_case(&name) && item.category.eq_ignore_ascii_case(&category)
+                item.name.eq_ignore_ascii_case(&name)
+                    && item.category.eq_ignore_ascii_case(&category)
             });
             if duplicate {
                 return Err(RuntimeError::bad_request(

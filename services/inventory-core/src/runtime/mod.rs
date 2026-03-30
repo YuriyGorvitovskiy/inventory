@@ -10,7 +10,7 @@ use std::path::Path;
 use crate::runtime::business::{BusinessLayer, InventoryBusinessLayer};
 use crate::runtime::contracts::{
     health_response, parsed_models_to_response, readiness_response, ActionInvocation, ActionResult,
-    RequestContext, ResolvedItemListView, RuntimeError, RuntimeModelApiResponse,
+    RequestContext, ResolvedView, RuntimeError, RuntimeModelApiResponse,
 };
 use crate::runtime::data::{DataLayer, InventoryDataLayer};
 use crate::runtime::events::InProcessEventStream;
@@ -20,10 +20,15 @@ use crate::{
     models::{HealthResponse, ItemResponse, ReadinessResponse},
     ui::INDEX_HTML,
 };
+use serde_json::{Map, Value};
 use sqlx::PgPool;
 
 #[derive(Clone)]
-pub struct CoLocatedRuntime<U = InventoryUiLayer, B = InventoryBusinessLayer, D = InventoryDataLayer> {
+pub struct CoLocatedRuntime<
+    U = InventoryUiLayer,
+    B = InventoryBusinessLayer,
+    D = InventoryDataLayer,
+> {
     definitions: DefinitionRegistry,
     routes: RouteCatalog,
     ui: U,
@@ -73,15 +78,24 @@ where
         self.data.request_context()
     }
 
-    pub async fn resolve_items_view(&self) -> Result<ResolvedItemListView, RuntimeError> {
+    pub async fn resolve_view(
+        &self,
+        view_name: &str,
+        params: Map<String, Value>,
+    ) -> Result<ResolvedView, RuntimeError> {
         self.ui
-            .resolve_items_view(
+            .resolve_view(
+                view_name,
+                params,
                 self.data.request_context(),
                 &self.definitions,
-                &self.business,
                 &self.data,
             )
             .await
+    }
+
+    pub async fn resolve_items_view(&self) -> Result<ResolvedView, RuntimeError> {
+        self.resolve_view("inventory.item.list", Map::new()).await
     }
 
     pub async fn invoke_action(
@@ -111,7 +125,20 @@ where
 
     pub async fn list_items(&self) -> Result<Vec<ItemResponse>, RuntimeError> {
         let view = self.resolve_items_view().await?;
-        Ok(view.rows.into_iter().map(Into::into).collect())
+        let rows = view
+            .context
+            .get("items")
+            .cloned()
+            .and_then(|items| items.get("rows").cloned())
+            .ok_or_else(|| {
+                RuntimeError::internal("resolved items view did not contain bound rows")
+            })?;
+
+        serde_json::from_value::<Vec<contracts::InventoryItemRecord>>(rows)
+            .map(|items| items.into_iter().map(Into::into).collect())
+            .map_err(|err| {
+                RuntimeError::internal(format!("failed to decode resolved item rows: {err}"))
+            })
     }
 
     pub async fn dispatch(
@@ -128,21 +155,28 @@ where
             "ready" => Ok(RuntimeResponse::Ready(self.readiness())),
             "index" => Ok(RuntimeResponse::IndexHtml(self.index_html())),
             "model.describe" => Ok(RuntimeResponse::Model(self.describe_models())),
-            "view.inventory.item.list" => Ok(RuntimeResponse::ItemsView(self.resolve_items_view().await?)),
             "items.list" => Ok(RuntimeResponse::Items(self.list_items().await?)),
             "action.inventory.item.create"
             | "action.inventory.item.update"
             | "action.inventory.item.delete" => match request {
-                RuntimeRequest::Action(invocation) => {
-                    Ok(RuntimeResponse::Action(self.invoke_action(invocation).await?))
-                }
+                RuntimeRequest::Action(invocation) => Ok(RuntimeResponse::Action(
+                    self.invoke_action(invocation).await?,
+                )),
                 RuntimeRequest::Empty => Err(RuntimeError::bad_request(format!(
                     "route '{route_name}' requires an action invocation"
                 ))),
             },
-            other => Err(RuntimeError::internal(format!(
-                "unsupported runtime route target '{other}'"
-            ))),
+            other => {
+                if let Some(view_name) = other.strip_prefix("view.") {
+                    Ok(RuntimeResponse::ItemsView(
+                        self.resolve_view(view_name, Map::new()).await?,
+                    ))
+                } else {
+                    Err(RuntimeError::internal(format!(
+                        "unsupported runtime route target '{other}'"
+                    )))
+                }
+            }
         }
     }
 
@@ -161,7 +195,7 @@ pub enum RuntimeResponse {
     Ready(ReadinessResponse),
     IndexHtml(&'static str),
     Model(RuntimeModelApiResponse),
-    ItemsView(ResolvedItemListView),
+    ItemsView(ResolvedView),
     Items(Vec<ItemResponse>),
     Action(ActionResult),
 }

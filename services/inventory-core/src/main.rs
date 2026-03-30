@@ -8,12 +8,14 @@ mod schema;
 mod state;
 mod ui;
 
-use axum::{routing::{get, put}, Router};
+use axum::{
+    routing::{get, post, put},
+    Router,
+};
 use config::{init_tracing, load_config};
 use phase1::http::{
-    create_item, delete_item, get_items_view, get_model, health, index, list_items, ready,
-    shutdown_signal,
-    update_item,
+    create_item, delete_item, execute_action, get_items_view, get_model, get_view, health, index,
+    list_items, ready, shutdown_signal, update_item,
 };
 use runtime::CoLocatedRuntime;
 use sqlx::postgres::PgPoolOptions;
@@ -70,6 +72,8 @@ async fn main() {
         .route("/ready", get(ready))
         .route("/api/model", get(get_model))
         .route("/api/views/items", get(get_items_view))
+        .route("/api/views/{view_name}", get(get_view))
+        .route("/api/actions/{action_name}", post(execute_action))
         .route("/api/items", get(list_items).post(create_item))
         .route("/api/items/{id}", put(update_item).delete(delete_item))
         .with_state(state);
