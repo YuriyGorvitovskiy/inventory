@@ -8,6 +8,6 @@ name = "category"
 table = "categories"
 description = "Category dictionary for inventory grouping."
 fields = [
-  { name = "name", type = "string", default = "" },
+  { name = "name", type = "label", required = true, default = "", indexed = true },
   { name = "description", type = "text", default = "" },
 ]

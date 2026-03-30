@@ -1,13 +1,18 @@
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
     model::{
-        model::{DefaultValue, FieldType},
+        model::{ConflictResolutionMode, DefaultValue, FieldType},
         ParsedModel,
     },
     models::{HealthResponse, ItemResponse, ReadinessResponse},
 };
+
+pub const OWNED_SERVICE: &str = "inventory-core";
+pub const OWNED_ENTITY_TYPE: &str = "item";
+static PATCH_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
 pub struct RequestContext {
@@ -137,6 +142,16 @@ pub enum ContextQueryResult {
 }
 
 #[derive(Debug, Clone)]
+pub enum ProjectionQuery {
+    InventoryItemList,
+}
+
+#[derive(Debug, Clone)]
+pub enum ProjectionResult {
+    InventoryItems(Vec<InventoryItemRecord>),
+}
+
+#[derive(Debug, Clone)]
 pub enum PatchOperation {
     CreateItem {
         name: String,
@@ -148,6 +163,7 @@ pub enum PatchOperation {
         name: String,
         category: String,
         quantity: i64,
+        quantity_delta: i64,
     },
     DeleteItem {
         id: i64,
@@ -158,17 +174,38 @@ pub enum PatchOperation {
 pub struct PatchEnvelope {
     pub kind: &'static str,
     pub version: &'static str,
+    pub patch_id: String,
+    pub tenant_id: String,
+    pub target: PatchTarget,
+    pub causation: PatchCausation,
     pub operation: PatchOperation,
+}
+
+#[derive(Debug, Clone)]
+pub struct PatchTarget {
+    pub service: &'static str,
+    pub entity_type: &'static str,
+    pub table: String,
+    pub id: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PatchCausation {
+    pub action_name: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EventEnvelope {
     pub kind: &'static str,
     pub version: &'static str,
+    pub patch_id: String,
     pub event_type: &'static str,
     pub entity_id: String,
     pub entity_type: &'static str,
+    pub service: &'static str,
     pub tenant_id: String,
+    pub action_name: &'static str,
+    pub payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -224,11 +261,14 @@ pub struct RuntimeModelClassResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct RuntimeModelFieldResponse {
     pub name: String,
+    pub column: String,
     pub field_type: String,
     pub destination_type: String,
     pub description: String,
     pub default_value: serde_json::Value,
     pub indexed: bool,
+    pub required: bool,
+    pub conflict_resolution: String,
 }
 
 #[derive(Debug, Clone)]
@@ -303,26 +343,36 @@ fn parsed_to_class(parsed: &ParsedModel) -> RuntimeModelClassResponse {
         name: parsed.model.entity.name.clone(),
         version: parsed.model.version.to_string(),
         description: parsed.model.entity.description.clone(),
-        table: parsed.schema.tables[0].name.clone(),
+        table: parsed.mapping.table_name.clone(),
         fields: parsed
             .model
             .entity
             .fields
             .iter()
-            .map(|field| RuntimeModelFieldResponse {
+            .zip(parsed.mapping.fields.iter())
+            .map(|(field, mapping)| RuntimeModelFieldResponse {
                 name: field.name.clone(),
+                column: mapping.column_name.clone(),
                 field_type: field_type_to_str(field.field_type).to_string(),
                 destination_type: field.destination_type.clone(),
                 description: field.description.clone(),
                 default_value: default_to_json(&field.default),
                 indexed: field.indexed,
+                required: field.required,
+                conflict_resolution: conflict_resolution_to_str(field.conflict_resolution.mode).to_string(),
             })
             .collect(),
     }
 }
 
+pub fn next_patch_id() -> String {
+    let sequence = PATCH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!("pat_{sequence:08}")
+}
+
 fn field_type_to_str(field_type: FieldType) -> &'static str {
     match field_type {
+        FieldType::Label => "label",
         FieldType::Boolean => "boolean",
         FieldType::Integer => "integer",
         FieldType::Float => "float",
@@ -340,9 +390,19 @@ fn default_to_json(default: &DefaultValue) -> serde_json::Value {
         DefaultValue::Float(v) => serde_json::Number::from_f64(*v)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
-        DefaultValue::Timestamp(v) | DefaultValue::String(v) | DefaultValue::Text(v) => {
+        DefaultValue::Label(v) | DefaultValue::Timestamp(v) | DefaultValue::String(v) | DefaultValue::Text(v) => {
             serde_json::Value::String(v.clone())
         }
         DefaultValue::ReferenceId(v) => serde_json::Value::Number((*v).into()),
+    }
+}
+
+fn conflict_resolution_to_str(mode: ConflictResolutionMode) -> &'static str {
+    match mode {
+        ConflictResolutionMode::LastChangeWins => "last_change_wins",
+        ConflictResolutionMode::Increment => "increment",
+        ConflictResolutionMode::Decrement => "decrement",
+        ConflictResolutionMode::InsertBefore => "insert_before",
+        ConflictResolutionMode::InsertAfter => "insert_after",
     }
 }

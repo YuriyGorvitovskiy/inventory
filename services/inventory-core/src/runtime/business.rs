@@ -1,7 +1,8 @@
 use crate::runtime::contracts::{
     ActionOutcome, ActionPlan, ActionResult, ContextQuery, ContextQueryResult, EventCandidate,
-    NormalizedActionInvocation, PatchEnvelope, PatchOperation, RequestContext, ResolvedItemListView,
-    RuntimeError,
+    NormalizedActionInvocation, PatchCausation, PatchEnvelope, PatchOperation, PatchTarget,
+    ProjectionQuery, ProjectionResult, RequestContext, ResolvedItemListView, RuntimeError,
+    OWNED_ENTITY_TYPE, OWNED_SERVICE, next_patch_id,
 };
 use crate::runtime::registry::DefinitionRegistry;
 use crate::runtime::data::DataLayer;
@@ -32,14 +33,9 @@ impl<D: DataLayer> BusinessLayer<D> for InventoryBusinessLayer {
         definitions: &DefinitionRegistry,
         data: &D,
     ) -> Result<ResolvedItemListView, RuntimeError> {
-        let ContextQueryResult::InventoryItems(rows) = data
-            .execute_context_query(context, ContextQuery::InventoryItems)
-            .await?
-        else {
-            return Err(RuntimeError::internal(
-                "unexpected context result for inventory item list",
-            ));
-        };
+        let ProjectionResult::InventoryItems(rows) = data
+            .load_projection(context, ProjectionQuery::InventoryItemList)
+            .await?;
 
         let definition = definitions.view("inventory.item.list")?;
         ensure_query_definitions_loaded(definitions, &definition.context_queries)?;
@@ -129,8 +125,14 @@ async fn plan_action<D: DataLayer>(
 
             Ok(ActionPlan {
                 patch: PatchEnvelope {
-                    kind: "patch_envelope",
+                    kind: "patch",
                     version: "1.0.0",
+                    patch_id: next_patch_id(),
+                    tenant_id: context.tenant_id.clone(),
+                    target: item_patch_target(data, None)?,
+                    causation: PatchCausation {
+                        action_name: "inventory.item.create",
+                    },
                     operation: PatchOperation::CreateItem {
                         name,
                         category,
@@ -167,16 +169,25 @@ async fn plan_action<D: DataLayer>(
             if existing.is_none() {
                 return Err(RuntimeError::not_found("item not found"));
             }
+            let existing = existing.expect("existing item checked above");
+            let quantity_delta = quantity - existing.quantity;
 
             Ok(ActionPlan {
                 patch: PatchEnvelope {
-                    kind: "patch_envelope",
+                    kind: "patch",
                     version: "1.0.0",
+                    patch_id: next_patch_id(),
+                    tenant_id: context.tenant_id.clone(),
+                    target: item_patch_target(data, Some(id))?,
+                    causation: PatchCausation {
+                        action_name: "inventory.item.update",
+                    },
                     operation: PatchOperation::UpdateItem {
                         id,
                         name,
                         category,
                         quantity,
+                        quantity_delta,
                     },
                 },
                 event: EventCandidate {
@@ -202,8 +213,14 @@ async fn plan_action<D: DataLayer>(
 
             Ok(ActionPlan {
                 patch: PatchEnvelope {
-                    kind: "patch_envelope",
+                    kind: "patch",
                     version: "1.0.0",
+                    patch_id: next_patch_id(),
+                    tenant_id: context.tenant_id.clone(),
+                    target: item_patch_target(data, Some(id))?,
+                    causation: PatchCausation {
+                        action_name: "inventory.item.delete",
+                    },
                     operation: PatchOperation::DeleteItem { id },
                 },
                 event: EventCandidate {
@@ -214,6 +231,20 @@ async fn plan_action<D: DataLayer>(
             })
         }
     }
+}
+
+fn item_patch_target<D: DataLayer>(data: &D, id: Option<i64>) -> Result<PatchTarget, RuntimeError> {
+    let parsed = data
+        .model_registry()
+        .get(OWNED_ENTITY_TYPE)
+        .ok_or_else(|| RuntimeError::internal("item model is not loaded"))?;
+
+    Ok(PatchTarget {
+        service: OWNED_SERVICE,
+        entity_type: OWNED_ENTITY_TYPE,
+        table: parsed.mapping.table_name.clone(),
+        id,
+    })
 }
 
 fn plan_deleted_id(plan: &ActionPlan) -> Option<i64> {

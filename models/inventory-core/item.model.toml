@@ -5,12 +5,12 @@ version = "1.0.0"
 
 [entity]
 name = "item"
-table = "items"
+table = "inventory_items"
 description = "Primary inventory record."
 fields = [
-  { name = "name", type = "string", default = "", indexed = true },
-  { name = "category_id", type = "reference", default = "none", destination_type = "category" },
-  { name = "quantity", type = "integer", default = 0 },
+  { name = "name", type = "label", required = true, default = "", indexed = true },
+  { name = "category", type = "label", required = true, default = "" },
+  { name = "quantity", type = "integer", required = true, default = 0, conflict_resolution = { mode = "increment" } },
   { name = "created_at", type = "timestamp", default = "now" },
   { name = "updated_at", type = "timestamp", default = "now" },
 ]

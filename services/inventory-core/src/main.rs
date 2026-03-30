@@ -30,7 +30,7 @@ async fn main() {
         .connect(&config.db_url)
         .await
         .expect("failed to connect to postgres");
-    db::ensure_schema(&db)
+    db::ensure_schema(&db, &config.model_dir)
         .await
         .expect("failed to ensure database schema");
 

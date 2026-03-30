@@ -1,4 +1,5 @@
 use crate::model::{load_model, parse_model, DefaultValue};
+use crate::model::normalize_identifier;
 use crate::schema::DataType;
 use im::vector;
 
@@ -29,6 +30,7 @@ fields = [
     assert_eq!(parsed.schema.name, "item");
     assert_eq!(parsed.schema.tables.len(), 1);
     assert_eq!(parsed.schema.tables[0].name, "items");
+    assert_eq!(parsed.mapping.table_name, "items");
     assert_eq!(parsed.schema.tables[0].columns[0].name, "id");
     assert_eq!(parsed.schema.tables[0].columns[0].data_type, DataType::BigInt);
     assert_eq!(
@@ -46,6 +48,11 @@ fields = [
     );
     assert_eq!(parsed.model.entity.fields[1].destination_type, "category");
     assert_eq!(parsed.model.entity.fields[0].destination_type, "");
+    assert!(!parsed.model.entity.fields[0].required);
+    assert_eq!(
+        parsed.model.entity.fields[0].conflict_resolution.mode,
+        crate::model::model::ConflictResolutionMode::LastChangeWins
+    );
 }
 
 #[test]
@@ -71,6 +78,32 @@ fields = [
     assert_eq!(table.indexes.len(), 2);
     assert_eq!(table.indexes[0].columns, vector!["name".to_string()]);
     assert_eq!(table.indexes[1].columns, vector!["category_id".to_string()]);
+}
+
+#[test]
+fn parses_label_and_conflict_resolution_metadata() {
+    let src = r#"
+format_version = 1
+version = "1.0.0"
+
+[entity]
+name = "item"
+table = "inventory_items"
+fields = [
+  { name = "name", type = "label", required = true, default = "", indexed = true },
+  { name = "quantity", type = "integer", required = true, default = 0, conflict_resolution = { mode = "increment" } }
+]
+"#;
+
+    let parsed = parse_model(src).expect("model should parse");
+
+    assert_eq!(parsed.schema.tables[0].columns[1].data_type, DataType::VarChar64);
+    assert!(parsed.model.entity.fields[0].required);
+    assert_eq!(parsed.model.entity.fields[0].default, DefaultValue::Label(String::new()));
+    assert_eq!(
+        parsed.model.entity.fields[1].conflict_resolution.mode,
+        crate::model::model::ConflictResolutionMode::Increment
+    );
 }
 
 #[test]
@@ -231,4 +264,31 @@ fields = [{ name = "name", type = "string", default = "" }]
     fs::remove_file(&path).expect("test model should be removed");
 
     assert_eq!(parsed.model.entity.name, "category");
+}
+
+#[test]
+fn normalizes_identifiers_to_lower_snake_case() {
+    assert_eq!(normalize_identifier("InventoryItem"), "inventory_item");
+    assert_eq!(normalize_identifier("display-name"), "display_name");
+    assert_eq!(normalize_identifier("SKU Code"), "sku_code");
+}
+
+#[test]
+fn mapping_builder_adds_deterministic_suffixes_for_colliding_columns() {
+    let src = r#"
+format_version = 1
+version = "1.0.0"
+
+[entity]
+name = "item"
+fields = [
+  { name = "SKUCode", type = "string", default = "" },
+  { name = "sku_code", type = "string", default = "" }
+]
+"#;
+
+    let parsed = parse_model(src).expect("model should parse");
+
+    assert_eq!(parsed.mapping.fields[0].column_name, "sku_code");
+    assert_eq!(parsed.mapping.fields[1].column_name, "sku_code_2");
 }

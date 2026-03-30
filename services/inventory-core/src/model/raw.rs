@@ -1,4 +1,4 @@
-use crate::model::model::FieldType;
+use crate::model::model::{FieldType, RawConflictResolution};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -26,6 +26,8 @@ pub struct RawField {
     pub description: Option<String>,
     pub default: RawDefault,
     pub indexed: Option<bool>,
+    pub required: Option<bool>,
+    pub conflict_resolution: Option<RawConflictResolution>,
 }
 
 #[derive(Debug, Deserialize)]

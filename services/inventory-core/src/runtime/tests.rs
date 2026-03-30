@@ -2,13 +2,15 @@ use crate::model::ModelRegistry;
 use crate::runtime::business::{BusinessLayer, InventoryBusinessLayer};
 use crate::runtime::contracts::{
     ActionInvocation, ContextQuery, ContextQueryResult, EventCandidate, EventEnvelope, InventoryItemRecord,
-    PatchEnvelope, RequestContext, RuntimeError,
+    PatchEnvelope, ProjectionQuery, ProjectionResult, RequestContext, RuntimeError, OWNED_ENTITY_TYPE,
+    OWNED_SERVICE,
 };
 use crate::runtime::data::DataLayer;
 use crate::runtime::events::InProcessEventStream;
 use crate::runtime::registry::DefinitionRegistry;
 use crate::runtime::ui::{InventoryUiLayer, UiLayer};
 use std::fs;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::broadcast;
 
@@ -19,6 +21,7 @@ struct FakeDataLayer {
     context: RequestContext,
     model_registry: ModelRegistry,
     items: Vec<InventoryItemRecord>,
+    applied_patches: Arc<Mutex<Vec<PatchEnvelope>>>,
 }
 
 impl FakeDataLayer {
@@ -34,7 +37,12 @@ version = "1.0.0"
 
 [entity]
 name = "item"
-fields = [{ name = "name", type = "string", default = "" }]
+table = "inventory_items"
+fields = [
+  { name = "name", type = "label", required = true, default = "", indexed = true },
+  { name = "category", type = "label", required = true, default = "" },
+  { name = "quantity", type = "integer", required = true, default = 0, conflict_resolution = { mode = "increment" } }
+]
 "#,
         )
         .expect("model should be written");
@@ -48,6 +56,7 @@ fields = [{ name = "name", type = "string", default = "" }]
             },
             model_registry,
             items,
+            applied_patches: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -78,12 +87,27 @@ impl DataLayer for FakeDataLayer {
         }
     }
 
+    async fn load_projection(
+        &self,
+        _context: &RequestContext,
+        query: ProjectionQuery,
+    ) -> Result<ProjectionResult, RuntimeError> {
+        match query {
+            ProjectionQuery::InventoryItemList => Ok(ProjectionResult::InventoryItems(self.items.clone())),
+        }
+    }
+
     async fn apply_patch(
         &self,
         context: &RequestContext,
         patch: PatchEnvelope,
         event: EventCandidate,
     ) -> Result<(Option<InventoryItemRecord>, EventEnvelope), RuntimeError> {
+        self.applied_patches
+            .lock()
+            .expect("patch log should lock")
+            .push(patch.clone());
+
         let item = InventoryItemRecord {
             id: event.entity_id_hint.unwrap_or(42),
             entity_id: format!("{}.inventory-core.item.{}", context.tenant_id, event.entity_id_hint.unwrap_or(42)),
@@ -108,12 +132,20 @@ impl DataLayer for FakeDataLayer {
         Ok((
             maybe_item,
             EventEnvelope {
-                kind: "event_envelope",
+                kind: "event",
                 version: patch.version,
+                patch_id: patch.patch_id,
                 event_type: event.event_type,
                 entity_id: item.entity_id,
                 entity_type: event.entity_type,
+                service: OWNED_SERVICE,
                 tenant_id: context.tenant_id.clone(),
+                action_name: patch.causation.action_name,
+                payload: serde_json::json!({
+                    "name": item.name,
+                    "category": item.category,
+                    "quantity": item.quantity,
+                }),
             },
         ))
     }
@@ -288,4 +320,82 @@ async fn business_resolves_view_with_registry_backed_definition() {
     assert_eq!(view.definition.name, "inventory.item.list");
     assert_eq!(view.rows.len(), 1);
     assert_eq!(view.rows[0].name, "Soap");
+}
+
+#[tokio::test]
+async fn business_builds_patch_against_owned_mapping_and_returns_committed_event_metadata() {
+    let business = InventoryBusinessLayer::default();
+    let data = FakeDataLayer::new(vec![]);
+    let definitions = test_definition_registry();
+
+    let result = business
+        .execute_action(
+            crate::runtime::contracts::NormalizedActionInvocation::CreateItem {
+                context: data.request_context(),
+                name: "Milk".to_string(),
+                category: "Dairy".to_string(),
+                quantity: 2,
+            },
+            &definitions,
+            &data,
+        )
+        .await
+        .expect("create item should succeed");
+
+    let patches = data
+        .applied_patches
+        .lock()
+        .expect("patch log should lock");
+    assert_eq!(patches.len(), 1);
+    assert_eq!(patches[0].kind, "patch");
+    assert_eq!(patches[0].tenant_id, "tenant-test");
+    assert_eq!(patches[0].target.service, OWNED_SERVICE);
+    assert_eq!(patches[0].target.entity_type, OWNED_ENTITY_TYPE);
+    assert_eq!(patches[0].target.table, "inventory_items");
+    assert_eq!(patches[0].causation.action_name, "inventory.item.create");
+
+    assert_eq!(result.event.kind, "event");
+    assert_eq!(result.event.patch_id, patches[0].patch_id);
+    assert_eq!(result.event.service, OWNED_SERVICE);
+    assert_eq!(result.event.action_name, "inventory.item.create");
+    assert_eq!(result.event.payload["name"], "Milk");
+}
+
+#[tokio::test]
+async fn business_computes_quantity_delta_for_increment_semantics() {
+    let business = InventoryBusinessLayer::default();
+    let data = FakeDataLayer::new(vec![InventoryItemRecord {
+        id: 4,
+        entity_id: "tenant-test.inventory-core.item.4".to_string(),
+        name: "Milk".to_string(),
+        category: "Dairy".to_string(),
+        quantity: 5,
+    }]);
+    let definitions = test_definition_registry();
+
+    let _ = business
+        .execute_action(
+            crate::runtime::contracts::NormalizedActionInvocation::UpdateItem {
+                context: data.request_context(),
+                id: 4,
+                name: "Milk".to_string(),
+                category: "Dairy".to_string(),
+                quantity: 7,
+            },
+            &definitions,
+            &data,
+        )
+        .await
+        .expect("update should succeed");
+
+    let patches = data
+        .applied_patches
+        .lock()
+        .expect("patch log should lock");
+    match &patches[0].operation {
+        crate::runtime::contracts::PatchOperation::UpdateItem { quantity_delta, .. } => {
+            assert_eq!(*quantity_delta, 2);
+        }
+        other => panic!("expected update patch, got {other:?}"),
+    }
 }
